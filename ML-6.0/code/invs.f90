@@ -47,22 +47,22 @@ subroutine TransportInvX(itype, i, j, k, off, inv)
 
   inv = min(Imax, max(Imin, invn))                              ! лимитирование
 
-  if(IsDebSideX(i, j, -1)) then
+  if(IsDebSideX(i, j, k)) then
     iname = ['R', 'Q', 'U', 'D', 'W']
-    write(17,"(/'TranspI-X:',3(';',i0))") i, j, k
-    write(17,"(a)") ";i;j;k;dteta;drho;du;dv;dw;I;G"
+    write(17,"(/'TranspI-X:',3(';',i0),';off=',i0)") i, j, k, off
+    write(17,"(a)") ";i;j;k;I;dteta;drho;du;dv;dw;G"
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
-      iname(itype), 'o', io, j, k, fx_dteta(io,j,k), fx_drho(io,j,k), fx_du(io,j,k), fx_dv(io,j,k), fx_dw(io,j,k), invo
+      iname(itype), 'o', io, j, k, invo, fx_dteta(io,j,k), fx_drho(io,j,k), fx_du(io,j,k), fx_dv(io,j,k), fx_dw(io,j,k)
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
-      iname(itype), 't', i , j, k, fx_dteta(i ,j,k), fx_drho(i ,j,k), fx_du(i ,j,k), fx_dv(i ,j,k), fx_dw(i ,j,k), invt
+      iname(itype), 't', i , j, k, invt, fx_dteta(i ,j,k), fx_drho(i ,j,k), fx_du(i ,j,k), fx_dv(i ,j,k), fx_dw(i ,j,k)
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
-      iname(itype), 'c', ic, j, k, c_dteta(ic,j,k), c_drho(ic,j,k), c_du(ic,j,k), c_dv(ic,j,k), c_dw(ic,j,k), invc, cs_G(ic, j, k)
+      iname(itype), 'c', ic, j, k, invc, c_dteta(ic,j,k), c_drho(ic,j,k), c_du(ic,j,k), c_dv(ic,j,k), c_dw(ic,j,k), cs_G(ic, j, k)
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
-      iname(itype), 's', ic, j, k, cs_dteta(ic,j,k), cs_drho(ic,j,k), cs_du(ic,j,k), cs_dv(ic,j,k), cs_dw(ic,j,k), invs, cs_G(ic, j, k)
+      iname(itype), 's', ic, j, k, invs, cs_dteta(ic,j,k), cs_drho(ic,j,k), cs_du(ic,j,k), cs_dv(ic,j,k), cs_dw(ic,j,k), cs_G(ic, j, k)
     write(17,"(a,a,';;;;',1p,g0.16,a)") iname(itype), 'n', invn, &
-          ";u;sound;lam;dx;q;Imin;Imax"
+          ";u;sound;lam;dx;dt;q;Imin;Imax"
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") iname(itype), ' ', i , j, k, inv, &
-          uc, sound, lam, dx, q, Imin, Imax
+          uc, sound, lam, dx, dt, q, Imin, Imax
   end if
 
 end subroutine TransportInvX
@@ -115,22 +115,22 @@ subroutine TransportInvY(itype, i, j, k, off, inv)
 
   inv = min(Imax, max(Imin, invn))                              ! лимитирование
 
-  if(IsDebSideY(i, j, -1)) then
+  if(IsDebSideY(i, j, k)) then
     iname = ['R', 'Q', 'U', 'D', 'W']
     write(17,"(/'TranspI-Y:',3(';',i0))") i, j, k
-    write(17,"(a)") ";i;j;k;dteta;drho;du;dv;dw;I;G"
+    write(17,"(a)") ";i;j;k;I;dteta;drho;du;dv;dw;G"
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
-      iname(itype), 'o', i, jo, k, fy_dteta(i,jo,k), fy_drho(i,jo,k), fy_du(i,jo,k), fy_dv(i,jo,k), fy_dw(i,jo,k), invo
+      iname(itype), 'o', i, jo, k, invo, fy_dteta(i,jo,k), fy_drho(i,jo,k), fy_du(i,jo,k), fy_dv(i,jo,k), fy_dw(i,jo,k)
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
-      iname(itype), 't', i , j, k, fy_dteta(i ,j,k), fy_drho(i ,j,k), fy_du(i ,j,k), fy_dv(i ,j,k), fy_dw(i ,j,k), invt
+      iname(itype), 't', i , j, k, invt, fy_dteta(i ,j,k), fy_drho(i ,j,k), fy_du(i ,j,k), fy_dv(i ,j,k), fy_dw(i ,j,k)
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
-      iname(itype), 'c', i, jc, k, c_dteta(i,jc,k), c_drho(i,jc,k), c_du(i,jc,k), c_dv(i,jc,k), c_dw(i,jc,k), invc, cs_G(i, jc, k)
+      iname(itype), 'c', i, jc, k, invc, c_dteta(i,jc,k), c_drho(i,jc,k), c_du(i,jc,k), c_dv(i,jc,k), c_dw(i,jc,k), cs_G(i, jc, k)
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
-      iname(itype), 's', i, jc, k, cs_dteta(i,jc,k), cs_drho(i,jc,k), cs_du(i,jc,k), cs_dv(i,jc,k), cs_dw(i,jc,k), invs, cs_G(i, jc, k)
+      iname(itype), 's', i, jc, k, invs, cs_dteta(i,jc,k), cs_drho(i,jc,k), cs_du(i,jc,k), cs_dv(i,jc,k), cs_dw(i,jc,k), cs_G(i, jc, k)
     write(17,"(a,a,';;;;',1p,g0.16,a)") iname(itype), 'n', invn, &
-          ";u;sound;lam;dx;q;Imin;Imax"
+          ";u;sound;lam;dy;dt;q;Imin;Imax"
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") iname(itype), ' ', i , j, k, inv, &
-          uc, sound, lam, dy, q, Imin, Imax
+          uc, sound, lam, dy, dt, q, Imin, Imax
   end if
 
 end subroutine TransportInvY
@@ -176,7 +176,6 @@ subroutine TransportInvZ(itype, i, j, k, off, inv)
       lam = wc                                         ! для транспортных инвариантов: lam = u
   end select
   dz = fz_z(i,j,k) - fz_z(i,j,ko)
-  !dz = fzs_z(i,j,k) - fzs_z(i,j,ko)
 
   q = 2. * (invs - invc) + lam * (invt - invo) / dz * dt              ! аппроксимация правой части
   Imin = min(invo, invc, invt) + q                              ! нижня мажоранта
@@ -184,18 +183,23 @@ subroutine TransportInvZ(itype, i, j, k, off, inv)
 
   inv = min(Imax, max(Imin, invn))                              ! лимитирование
 
-  if(IsDebSideZ(i, j, -1)) then
+  if(IsDebSideZ(i, j, k)) then
     iname = ['R', 'Q', 'U', 'D', 'W']
-    write(17,"(/'TranspI-Z:',3(';',i0))") i, j, k
-    write(17,"(a)") ";i;j;I;G"
-    write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") iname(itype), 'o', i, j, ko, invo
-    write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") iname(itype), 't', i, j, k , invt
-    write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") iname(itype), 'c', i, j, kc, invc, cs_G(i, j, kc)
-    write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") iname(itype), 's', i, j, kc, invs, cs_G(i, j, kc)
-    write(17,"(a,a,';;;;',1p,g0.16,a)") iname(itype), 'n', invn, &
-          ";wc;sound;lam;dz;q;Imin;Imax"
+    write(17,"(/'TranspI-Z:',3(';',i0),';off=',i0)") i, j, k, off
+    write(17,"(a)") ";i;j;k;I;dteta;drho;du;dv;dw;G"
+    write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
+      iname(itype), 'o', i, j, ko, invo, fz_dteta(i,j,ko), fz_drho(i,j,ko), fz_du(i,j,ko), fz_dv(i,j,ko), fz_dw(i,j,ko)
+    write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
+      iname(itype), 't', i, j, k, invt, fz_dteta(i,j,k), fz_drho(i,j,k), fz_du(i,j,k), fz_dv(i,j,k), fz_dw(i,j,k)
+    write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
+      iname(itype), 'c', i, j, kc, invc, c_dteta(i,j,kc), c_drho(i,j,kc), c_du(i,j,kc), c_dv(i,j,kc), c_dw(i,j,kc), cs_G(i, j, kc)
+    write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") &
+      iname(itype), 's', i, j, kc, invs, cs_dteta(i,j,kc), cs_drho(i,j,kc), cs_du(i,j,kc), cs_dv(i,j,kc), cs_dw(i,j,kc), cs_G(i, j, kc)
+    write(17,"(a,a,';;;;',1p,g0.16,a)") &
+      iname(itype), 'n', invn, &
+          ";wc;sound;lam;dz;dt;q;Imin;Imax"
     write(17,"(a,a,3(';',i0),100(';',1p,g0.16))") iname(itype), ' ', i , j, k, inv, &
-          wc, sound, lam, dz, q, Imin, Imax
+          wc, sound, lam, dz, dt, q, Imin, Imax
   end if
 
 end subroutine TransportInvZ
@@ -379,7 +383,7 @@ function GetCellInvZ(itype, i, j, k, isN)
       end if
 
     case (T_INVU)
-      if(isN) then; inv = cs_du(i,j,k); else; inv = c_dv(i,j,k); endif
+      if(isN) then; inv = cs_du(i,j,k); else; inv = c_du(i,j,k); endif
 
     case (T_INVW)
       if(isN) then; inv = cs_dv(i,j,k); else; inv = c_dv(i,j,k); endif

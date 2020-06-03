@@ -339,11 +339,11 @@ subroutine Step
   !call CheckConstX
   !call TestSym                      ! тест на симметрию относительно Y=0: h(y)=h(-y), u(y)=u(-y), v(y)=-v(-y)
 
-#if 0
   do i=1,ncx; do j=1,ncy; do k=1,ncz
-    if(c_dteta(i,j,k)/=cs_dteta(i,j,k)) then
+    if(c_dteta(i,j,k)/=cs_dteta(k,j,i)) then
       debdum=0
     endif
+# if 0
     if(c_drho(i,j,k)/=cs_drho(i,j,k)) then
       debdum=1
     endif
@@ -356,8 +356,10 @@ subroutine Step
     if(c_dw(i,j,k)/=cs_dw(i,j,k)) then
       debdum=4
     endif
+#endif
   end do; end do; end do
 
+#if 0
   do i=1,nxx; do j=1,nxy; do k=1,ncz
     if(fx_dteta(i,j,k)/=fxn_dteta(i,j,k)) then
       debdum=0

@@ -31,12 +31,12 @@ subroutine Phase1
       cs_w0(i,j,k) = cs_GetW0(i,j,k)
     end do
 
-    if(IsDebCell(i, j, -1)) then
-      write(17,"(/'Phase 1',2(';',i0),';pos:',100(';',f0.5))") i, j, (x(i)+x(i+1))/2., (y(j)+y(j+1))/2.
+    do k=1,ncz                                                  ! цикл по cлоям
+
+    if(IsDebCell(i, j, k)) then
+      write(17,"(/'Phase 1',3(';',i0),';pos:',100(';',f0.5))") i, j, k, (x(i)+x(i+1))/2., (y(j)+y(j+1))/2.
       write(17,"(a)") ";i;j;k;teta;drho;u;v;w;zT;zB;dp;H(sw);dz"
     end if
-
-    do k=1,ncz                                                  ! цикл по cлоям
 
       !-- значения в cлой-ячейке и её окреcтноcтям ------------------------------------------------------
 
@@ -271,9 +271,9 @@ subroutine Phase1
         write(17,"('side-YR:',3(';',i0),100(';',1p,g0.16))") &
             i, j+1, k, teta_yr, rho_yr, u_yr, v_yr, w_yr, fy_z(i,j+1,k), fy_z(i,j+1,k+1), dp_yr, hSw_yr, dz_yr; flush(17)
         write(17,"('side-B:',3(';',i0),100(';',1p,g0.16))") &
-            i, j, k, teta_b, rho_b, u_b, v_b, w_b, fz_z(i,j,k+1), 0., dp_b, hSw_b, dz_xb, dz_yb; flush(17)
+            i, j, k+1, teta_b, rho_b, u_b, v_b, w_b, fz_z(i,j,k+1), 0., dp_b, hSw_b, dz_xb, dz_yb; flush(17)
         write(17,"('side-T:',3(';',i0),100(';',1p,g0.16))") &
-            i, j, k+1, teta_t, rho_t, u_t, v_t, w_t, fz_z(i,j,k), 0., dp_t, hSw_t, dz_xt, dz_yt; flush(17)
+            i, j, k, teta_t, rho_t, u_t, v_t, w_t, fz_z(i,j,k), 0., dp_t, hSw_t, dz_xt, dz_yt; flush(17)
         write(17,"('UC:' ,3(';',i0),100(';',1p,g0.16))") i, j, k,  c_teta(i,j,k),  c_rho(i,j,k),  c_u(i,j,k),  c_v(i,j,k),  c_w(i,j,k)
         write(17,"('UCS:',3(';',i0),100(';',1p,g0.16))") i, j, k, cs_teta(i,j,k), cs_rho(i,j,k), cs_u(i,j,k), cs_v(i,j,k), cs_w(i,j,k)
         flush(17)
@@ -316,12 +316,12 @@ subroutine Phase3
       debdum = 0
     end do
 
-    if(IsDebCell(i, j, -1)) then
-      write(17,"(/'Phase 3',2(';',i0),';pos:',100(';',f0.5))") i, j, (x(i)+x(i+1))/2., (y(j)+y(j+1))/2.
+    do k=1,ncz                                                  ! цикл по cлоям
+
+    if(IsDebCell(i, j, k)) then
+      write(17,"(/'Phase 3',3(';',i0),';pos:',100(';',f0.5))") i, j, k, (x(i)+x(i+1))/2., (y(j)+y(j+1))/2.
       write(17,"(a)") ";i;j;k;teta;drho;u;v;w;dp;H(sw);dz"
     end if
-
-    do k=1,ncz                                                  ! цикл по cлоям
 
       !-- значения в cлой-ячейке и её окреcтноcтям ------------------------------------------------------
 
@@ -554,9 +554,9 @@ subroutine Phase3
         write(17,"('side-YR:',3(';',i0),100(';',1p,g0.16))") &
             i, j+1, k, teta_yr, rho_yr, u_yr, v_yr, w_yr, dp_yr, hSw_yr, dz_yr; flush(17)
         write(17,"('side-B:',3(';',i0),100(';',1p,g0.16))") &
-            i, j, k, teta_b, rho_b, u_b, v_b, w_b, dp_b, hSw_b, dz_xb, dz_yb; flush(17)
+            i, j, k+1, teta_b, rho_b, u_b, v_b, w_b, dp_b, hSw_b, dz_xb, dz_yb; flush(17)
         write(17,"('side-T:',3(';',i0),100(';',1p,g0.16))") &
-            i, j, k+1, teta_t, rho_t, u_t, v_t, w_t, dp_t, hSw_t, dz_xt, dz_yt; flush(17)
+            i, j, k, teta_t, rho_t, u_t, v_t, w_t, dp_t, hSw_t, dz_xt, dz_yt; flush(17)
         write(17,"('UCS:' ,3(';',i0),100(';',1p,g0.16))") i, j, k, cs_teta(i,j,k), cs_rho(i,j,k), cs_u(i,j,k), cs_v(i,j,k), cs_w(i,j,k)
         write(17,"('UC:',3(';',i0),100(';',1p,g0.16))") i, j, k,  c_teta(i,j,k),  c_rho(i,j,k),  c_u(i,j,k),  c_v(i,j,k),  c_w(i,j,k)
         flush(17)

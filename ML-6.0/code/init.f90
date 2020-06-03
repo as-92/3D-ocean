@@ -28,9 +28,9 @@ subroutine Init
   ! -5) Проточный тест на неровном дне с периодическими ГУ по оси X
   ! -6) Проточный тест на неровном дне с периодическими ГУ по оси Y
   ! -7) Проточный тест на неровном дне с периодическими ГУ по двум осям
-  ! -8) Вихрь
-  ! -9) Курганов
-  ! 10 Бугор на поверхности/дне по X с нулевыми скоростями, период. ГУ
+  !  8) Вихрь в плоскости X-Z
+  !  9) Вихревая цилиндрическая пара в плоскости X-Z
+  ! 10) Бугор на поверхности/дне по X с нулевыми скоростями, период. ГУ
   !
   ! -12 Струя в периодической области с Кориолисом
   ! -13 Лабораторные тесты из статьи C. GLADSTONE "An experimental investigation of density-stratified inertial gravity currents"
@@ -40,7 +40,7 @@ subroutine Init
   ! -998 тест мелой воды
   ! -999 тест мелой воды (вихрь)
 
-  test_numb = 8
+  test_numb = 9
 
   ! что печатать: 1 - печать, 0 - не печатать
   print_height = 1
@@ -70,7 +70,8 @@ subroutine Init
   nprint = 0
 
   select case (test_numb)
-    case ( 8);  call SetupTask_8          ! вихрь
+    case ( 8);  call SetupTask_8          ! вихрь X-Y
+    case ( 9);  call SetupTask_9          ! вихревая пара X-Z
     case (10);  call SetupTask_10         ! горбы
 
     case default
@@ -182,8 +183,8 @@ subroutine Init
 
   ! параметры на гранях, как полусумма значений в ячейках:
   do i=1,nxx; do j=1,nxy                                        ! для X-граней
-    ccl = i - 1                                                  ! ячейка слева
-    ccr = i                                                      ! ячейка справа
+    ccl = i - 1                                                 ! ячейка слева
+    ccr = i                                                     ! ячейка справа
 
     ! на граничных гранях корректируем индексы ячеек:
     if(fx_type(i,j)==BC_PERIODIC) then                          ! для периодических граней
@@ -219,8 +220,8 @@ subroutine Init
   end do; end do
 
   do i=1,nyx; do j=1,nyy                                        ! для Y-граней
-    ccl = j - 1                                                  ! ячейка слева
-    ccr = j                                                      ! ячейка справа
+    ccl = j - 1                                                 ! ячейка слева
+    ccr = j                                                     ! ячейка справа
 
     ! на граничных гранях корректируем индексы ячеек:
     if(fy_type(i,j)==BC_PERIODIC) then                          ! для периодических граней
@@ -269,7 +270,7 @@ subroutine Init
       fz_v(i,j,k) = (c_v(i,j,kt) + c_v(i,j,kb)) / 2.
       fz_w(i,j,k) = (c_w(i,j,kt) + c_w(i,j,kb)) / 2.
       fz_rho(i,j,k) = (c_rho(i,j,kt) + c_rho(i,j,kb)) / 2.
-      fz_dteta(i,j,k) = (c_teta(i,j,kt) + c_teta(i,j,kb)) / 2.
+      fz_teta(i,j,k) = (c_teta(i,j,kt) + c_teta(i,j,kb)) / 2.
     end do
   end do
 

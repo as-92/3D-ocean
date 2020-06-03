@@ -18,7 +18,9 @@
 !   c_dw(:,:,:)    - отклонение Z-скорости от c_GetW(:,:,:)
 ! Также, для каждой ячейки и грани необходимо задать c_type, fx_type, fy_type
 
-! Вихрь
+!============================================================================================================
+
+! Вихрь X-Y
 subroutine SetupTask_8
   use variables
   implicit none
@@ -133,6 +135,128 @@ subroutine SetupTask_8
     enddo
   enddo
 #endif
+
+end
+
+!============================================================================================================
+
+! Вихревая пара X-Z (всплытие)
+subroutine SetupTask_9
+  use variables
+  implicit none
+
+  interface
+    subroutine CalcVertexXZ(xi, zi, x0, z0, alpha, beta, r0, ui, wi, tetai)
+      real(R8):: xi, zi, x0, z0, alpha, beta, r0, ui, wi, tetai
+    end subroutine
+  end interface
+
+  integer:: i, ic, il, ir, iz, j, jc, jl, jr, k
+  real(R8):: alphah, bci, betah, cosa, delbot, deltop, dmu_0, dx, dy
+  real(R8):: dzbot, dzbotcoef, dztop, dztopcoef, h_0
+  real(R8):: p_0, r0, r_0, rbot, ri, rtop, a, tci, u_0
+  real(R8):: ui, vi, zi, hi, xi, yi, z0, xc0, zc0, dcx
+
+  dl=5.; dw=0.1; dh=5.                                          ! размер области
+  ncx=50; ncy=1; ncz=50;                                        ! количество ячеек сетки
+  bctypex = BC_PERIODIC; bctypey = BC_PERIODIC                  ! тип ГУ на боковых границах
+
+  nx = ncx+1; ny = ncy+1; nz = ncz+1
+  call allocate
+
+  ! отладка:
+  debstartstep = 0; debendstep = -2
+  debstartz = 28; debendz = 30
+
+  debcells(24, 1, 28) = 1
+  debcells(24, 1, 29) = 1
+  debcells(28, 1, 24) = 1
+  debcells(29, 1, 24) = 1
+  !debSidesX(24, 1) = 1
+  debSidesZ(24, 1, 29) = 1
+
+  !debSidesY(44, 1) = 1
+  !debsidesY(44, 2) = 1
+
+  !debcells(23, 1) = 1
+  !debSidesX(31, 1) = 1
+  !debSidesZ(31, 1) = 1
+
+#if 0
+  nt=2000 ! полное число шагов по времени
+  nprint=10 ! интервал печати
+#else
+  maxt=100.
+  tprint=maxt/400.
+#endif
+
+  CFL = 0.3 ! Число Куранта
+  pan=0.0 !- параметр Паниковского
+
+  ! константы:
+  g = 1
+  rho0 = 1.
+  teta0 = 1.
+  sound0 = 1. !0.15 * sqrt(g * dh)             ! псевдо-скорость звука
+
+  ! Расчет начальной сетки
+  x(1) = -dl / 2.
+  dx = dl / (nx-1)
+  do i=1,ncx; x(i+1) = x(i) + dx; end do                    ! координаты узлов сетки
+
+  y(1) = -dw / 2.
+  dy = dw / (ny-1)
+  do j=1,ny-1; y(j+1) = y(j) + dy; end do                   ! координаты узлов сетки
+
+  z0 = 0.                                                   ! фоновый уровень поверхности
+  b0 = z0 - dh                                              ! фоновый уровень дна
+
+  ! параметры вихря:
+  alphaH = 0.404
+  betaH = 0.4
+  r_0= 0.25
+
+  xc0 = 0.                                                  ! центр вихревой пары
+  dcx = r_0 * 3.                                            ! расстояние между центрами вихрей
+  zc0 = b0 + r_0 * 8.                                       ! уровень вихрей по z
+
+  !dcx = 0.
+  !zc0 = (b0 + z0) / 2.
+
+  ! равномерная сетка по вертикали от поверхности до дна:
+  do iz = 1, nz
+    fz_z(:, :, iz) = z0 - (iz - 1.) * dh / (nz - 1.)
+  end do
+
+  ! фоновые параметры:
+  c_rho = rho0
+  c_teta = teta0
+  c_u = 0.
+  c_v = 0.
+  c_w = 0.
+
+  ! начальные данные на сетке:
+  do i=1, ncx
+    do j=1, ncy
+      do k = 1, ncz
+
+        xi = (x(i) + x(i+1)) / 2.                             ! x-координата ячейки
+        yi = (y(j) + y(j+1)) / 2.                             ! y-координата ячейки
+        zi = (fz_z(i, j, k) + fz_z(i, j, k+1)) / 2.             ! z-кордината слой-ячейки
+
+        ! два вихря:
+        call CalcVertexXZ(xi, zi, xc0 - dcx/2., zc0, -alphaH, betaH, r_0, c_u(i,j,k), c_w(i,j,k), c_teta(i,j,k))
+        call CalcVertexXZ(xi, zi, xc0 + dcx/2., zc0,  alphaH, betaH, r_0, c_u(i,j,k), c_w(i,j,k), c_teta(i,j,k))
+
+      end do
+    end do
+  end do
+
+  ! мелкая вода:
+  c_h0 = dh
+  c_rho0 = rho0
+  c_u0 = 0.
+  c_v0 = 0.
 
 end
 
@@ -737,3 +861,22 @@ subroutine SetupTask_999
 #endif
 
 end
+
+!===============================================================================================
+
+subroutine CalcVertexXZ(xi, zi, x0, z0, alpha, beta, r0, ui, wi, tetai)
+  use variables
+  implicit none
+  real(R8):: xi, zi, x0, z0, alpha, beta, r0, ui, wi, tetai
+  real(R8):: ri, a, delu, delw, delteta
+
+  ri = sqrt((xi-x0)**2 + (zi-z0)**2)                    ! расстояние до центра (xc0, zc0)
+  a = beta * (1. - (ri**2 / r0**2))
+  delu = alpha / r0 * exp(a) * (zi - z0)
+  delw = -alpha / r0 * exp(a) * (xi - x0)
+  delteta = -alpha**2 * exp(2 * a) / (4. * sound0**2 * beta)
+
+  ui = ui + delu
+  wi = wi + delw
+  tetai = tetai + delteta
+end subroutine

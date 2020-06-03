@@ -167,7 +167,7 @@ module variables
   integer:: test_numb
   !INTEGER(4) isNanHeight,isNanVelocity,isNanDensity,test_numb,mI,mJ,mK,loadStep,loadIout
 
-  real(R8):: dl, dw, xmin, xmax, ymin, ymax
+  real(R8):: dl, dw, dh, xmin, xmax, ymin, ymax
   real(R8):: cfl, dt, ttime, g, pan, sig_0, sig, sigma, sigma2Ph
 
   real(R8):: ekin_0         ! начальная кинетическая энергия
@@ -227,7 +227,7 @@ module variables
   real(R8) :: debdum
   real(R8), pointer :: deby(:), debz1(:), debz2(:)
 
-  integer(1), pointer :: debCells(:,:), debSidesX(:,:), debSidesY(:,:), debSidesZ(:,:)  ! ячейки и грани под отладкой
+  integer(1), pointer :: debCells(:,:,:), debSidesX(:,:,:), debSidesY(:,:,:), debSidesZ(:,:,:)  ! ячейки и грани под отладкой
   integer(4) :: debStartStep, debEndStep, debStartZ, debEndZ  ! ограничения на шаги и слои под отладкой
 
   character(len=:),allocatable::frm619,frm9997,frm9998,frm9999
@@ -336,7 +336,7 @@ contains !----------------------------------------------------------------------
     allocate(ubcl0(nz-1),ubcr0(nz-1))
 
     allocate(deby(1:ny),debz1(1:nz),debz2(1:nz))
-    allocate(debCells(ncx,ncy), debSidesX(nxx,nxy), debSidesY(nyx,nyy), debSidesZ(ncx,ncy))
+    allocate(debCells(ncx,ncy,ncz), debSidesX(nxx,nxy,ncz), debSidesY(nyx,nyy,ncz), debSidesZ(ncx,ncy,nz))
 
     call ExchangePointers
 
@@ -1081,63 +1081,105 @@ contains !----------------------------------------------------------------------
     integer(4) :: iz
     logical :: IsDeb
 
-    if(istep<debStartStep .or. istep>debEndStep) then
-      IsDeb = .false.
-    else if(iz>=0 .and. (iz<debStartZ .or. iz>debEndZ)) then
-      IsDeb = .false.
-    else
-      IsDeb = .true.
-    end if
+    IsDeb = (istep>=debStartStep .and. istep<=debEndStep)
   end function IsDeb
 
   !---------------------------------------------------------------------------------------------------------------------
 
   function IsDebCell(ix, iy, iz)
-    integer(4) :: ix, iy, iz
-    logical :: IsDebCell
-    if(.not.IsDeb(iz)) then
+    integer(4) :: ix, iy, iz, k
+    logical :: IsDebCell, rc
+
+    if(.not. IsDeb(-1)) then
+      IsDebCell = .false.
+      return
+    end if
+
+    if(iz<=0) then
+      do k=1, ncz
+        if(debCells(ix, iy, k)/=0) then
+          IsDebCell = .true.
+          return
+        end if
+      end do
       IsDebCell = .false.
     else
-      IsDebCell = debCells(ix, iy) /= 0
+      IsDebCell = debCells(ix, iy, iz) /= 0
     end if
   end function IsDebCell
 
   !---------------------------------------------------------------------------------------------------------------------
 
   function IsDebSideX(ix, iy, iz)
-    integer(4) :: ix, iy, iz
+    integer(4) :: ix, iy, iz, k
     logical :: IsDebSideX
-    if(.not.IsDeb(iz)) then
+
+    if(.not. IsDeb(-1)) then
+      IsDebSideX = .false.
+      return
+    end if
+
+    if(iz<=0) then
+      do k=1, ncz
+        if(debSidesX(ix, iy, k)/=0) then
+          IsDebSideX = .true.
+          return
+        end if
+      end do
       IsDebSideX = .false.
     else
       if(iy>ubound(debSidesX,2)) then
         debdum=0
       endif
-      IsDebSideX = debSidesX(ix, iy) /= 0
+      IsDebSideX = debSidesX(ix, iy, iz) /= 0
     end if
   end function IsDebSideX
 
   !---------------------------------------------------------------------------------------------------------------------
 
   function IsDebSideY(ix, iy, iz)
-    integer(4) :: ix, iy, iz
+    integer(4) :: ix, iy, iz, k
     logical :: IsDebSideY
-    if(.not.IsDeb(iz)) then
+
+    if(.not. IsDeb(-1)) then
+      IsDebSideY = .false.
+      return
+    end if
+
+    if(iz<=0) then
+      do k=1, ncz
+        if(debSidesY(ix, iy, k)/=0) then
+          IsDebSideY = .true.
+          return
+        end if
+      end do
       IsDebSideY = .false.
     else
-      IsDebSideY = debSidesY(ix, iy) /= 0
+      IsDebSideY = debSidesY(ix, iy, iz) /= 0
     end if
   end function IsDebSideY
 
   !---------------------------------------------------------------------------------------------------------------------
 
   function IsDebSideZ(ix, iy, iz)
-    integer(4) :: ix, iy, iz
+    integer(4) :: ix, iy, iz, k
     logical :: IsDebSideZ
-    if(.not.IsDeb(iz)) then
+
+    if(.not. IsDeb(-1)) then
+      IsDebSideZ = .false.
+      return
+    end if
+
+    if(iz<=0) then
+      do k=1, nz
+        if(debSidesZ(ix, iy, k)/=0) then
+          IsDebSideZ = .true.
+          return
+        end if
+      end do
       IsDebSideZ = .false.
     else
-      IsDebSideZ = debSidesZ(ix, iy) /= 0
+      IsDebSideZ = debSidesZ(ix, iy, iz) /= 0
     end if
   end function IsDebSideZ
 

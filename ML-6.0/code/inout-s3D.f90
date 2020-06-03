@@ -16,10 +16,10 @@ subroutine TPoutPlt
   real(4) :: data(nx * ny * nz)
   integer(4) :: ic, jc, js, is, iz, isr, isl, jsb, jsf, rc, cnt, ndata
   integer(4) :: i1, i2, i3, i4, i5, i6, i, j, k
-  ! переменные:                           x  y  z  u  v  w |u| h rho T fz_z z0 rot id
-  integer(4) :: ValueLocation(14) =    (/ 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0 /)         ! 0: point, 1: cell
-  integer(4) :: PassiveVarList(14) =   (/ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0 /)
-  integer(4) :: ShareVarFromZone(14) = (/ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0, 0 /)
+  ! переменные:                           x  y  z  u  v  w |u| h rho teta fz_z z0 rot id
+  integer(4) :: ValueLocation(14) =    (/ 1, 1, 1, 0, 0, 0, 0, 0, 0,   0,   0, 0,  0, 0 /)         ! 0: point, 1: cell
+  integer(4) :: PassiveVarList(14) =   (/ 0, 0, 0, 0, 0, 0, 0, 0, 0,   0,   0, 0,  0, 0 /)
+  integer(4) :: ShareVarFromZone(14) = (/ 0, 0, 0, 0, 0, 0, 0, 0, 0,   0,   0, 0,  0, 0 /)
   ! integer(4) :: ValueLocation(4) = (/ 1, 1, 1, 0 /)         ! 0: point, 1: cell
   ! integer(4) :: PassiveVarList(4) = (/ 0, 0, 0, 0 /)
   ! integer(4) :: ShareVarFromZone(4) = (/ 0, 0, 0, 0 /)
@@ -186,7 +186,7 @@ subroutine TPoutPlt
   write(buf,"(a,i0,a)") "TITLE = ""TEST_NO: ", test_numb, """"
   rc = tecini142( &
           buf//c0, &                                                    ! заголовок
-          'x y z u v w absVel h rho T fz_z z0 rot id'//c0, &                         ! переменные
+          'x y z u v w absVel h rho teta fz_z z0 rot id'//c0, &                         ! переменные
           fname//c0, &                                                  ! имя файла
           './out'//c0, &                                                ! scratch dir
           0, &                                                          ! формат файла: 0=.plt 1=.szplt
@@ -295,7 +295,7 @@ subroutine TPoutPlt
       do ic = 1, ncx
         if(c_type(ic, jc)>CELL_DELETED) &
           !data(cnt) = GetCVelocity(c_u(ic, jc, iz))
-          data(cnt) = c_u0(ic,jc)
+          data(cnt) = c_u(ic,jc,iz)
         cnt = cnt + 1
       end do
     end do
@@ -310,7 +310,7 @@ subroutine TPoutPlt
       do ic = 1, ncx
         if(c_type(ic, jc)>CELL_DELETED) &
           !data(cnt) = GetCVelocity(c_v(ic, jc, iz))
-          data(cnt) = c_v0(ic,jc)
+          data(cnt) = c_v(ic,jc,iz)
         cnt = cnt + 1
       end do
     end do
@@ -324,8 +324,7 @@ subroutine TPoutPlt
     do jc = 1, ncy
       do ic = 1, ncx
         if(c_type(ic, jc)>CELL_DELETED) &
-          !data(cnt) = w(ic, jc, iz) / CH * CT
-          data(cnt)=0.
+          data(cnt) = c_w(ic, jc, iz)
         cnt = cnt + 1
       end do
     end do
@@ -339,8 +338,8 @@ subroutine TPoutPlt
     do jc = 1, ncy
       do ic = 1, ncx
         if(c_type(ic, jc)>CELL_DELETED) &
-          !data(cnt) = GetCVelocity(SQRT(c_u(ic, jc, iz)**2+c_v(ic, jc, iz)**2))
-          data(cnt) = GetCVelocity(SQRT(c_u0(ic, jc)**2+c_v0(ic, jc)**2))
+          data(cnt) = GetCVelocity(SQRT(c_u(ic, jc, iz)**2 + c_v(ic, jc, iz)**2 + c_w(ic, jc, iz)**2))
+          !data(cnt) = GetCVelocity(SQRT(c_u0(ic, jc)**2+c_v0(ic, jc)**2))
         cnt = cnt + 1
       end do
     end do
@@ -368,21 +367,21 @@ subroutine TPoutPlt
     do jc = 1, ncy
       do ic = 1, ncx
         if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = GetCDensity(rho0 + c_drho(ic, jc, iz))
+          data(cnt) = GetCDensity(c_rho(ic, jc, iz))
         cnt = cnt + 1
       end do
     end do
   end do
   rc = tecdat142(ndata, data, 0)
 
-  ! температура:
+  ! псевдо-плотность:
   cnt = 1
   data = 0.
   do iz = ncz, 1, -1
     do jc = 1, ncy
       do ic = 1, ncx
         if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = c_dteta(ic,jc,iz)
+          data(cnt) = c_teta(ic,jc,iz)
         cnt = cnt + 1
       end do
     end do

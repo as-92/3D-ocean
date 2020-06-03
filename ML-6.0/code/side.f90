@@ -85,7 +85,8 @@ subroutine Phase2X
       dtetai = (invR - invQ) / (Gr - Gq)                  ! дельта псевдоплотности
       dui = (invR*Gq - invQ*Gr) / (Gq - Gr)               ! дельта нормальной скорости
 
-      w0i = fxn_GetW0(i,j,k)
+!      w0i = fxn_GetW0(i,j,k)
+      w0i = fxn_w0(i,j,k)
 
       fxn_dteta(i,j,k) = dtetai                           ! псевдоплотность
       fxn_du(i,j,k) = dui                                 ! нормальная скорость
@@ -94,14 +95,14 @@ subroutine Phase2X
       fxn_drho(i,j,k) = drhoi                             ! плотность
 
       if(IsDebSideX(i, j, k)) then
-        if(isFirstOut) &
+        !if(isFirstOut) &
           write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
         write(17,"('side:',3(';',i0),100(';',1p,g0.16))") &
             i, j, k, &
-              teta0+fx_dteta(i,j,k), rho0+fx_drho(i,j,k), fx_u0(i,j)+fx_du(i,j,k), fx_v0(i,j)+fx_dv(i,j,k), fx_GetW0(i,j,k)+fx_dw(i,j,k), &
+              teta0+fx_dteta(i,j,k), rho0+fx_drho(i,j,k), fx_u0(i,j)+fx_du(i,j,k), fx_v0(i,j)+fx_dv(i,j,k), fx_w0(i,j,k)+fx_dw(i,j,k), &
               invR, invQ, invU, invW, invD, Gr, Gq
         write(17,"('UFN:;;;',100(';',1p,g0.16))") &
-              teta0+fxn_dteta(i,j,k), rho0+fxn_drho(i,j,k), fxn_u0(i,j)+fxn_du(i,j,k), fxn_v0(i,j)+fxn_dv(i,j,k), fxn_GetW0(i,j,k)+fxn_dw(i,j,k)
+              teta0+fxn_dteta(i,j,k), rho0+fxn_drho(i,j,k), fxn_u0(i,j)+fxn_du(i,j,k), fxn_v0(i,j)+fxn_dv(i,j,k), fxn_w0(i,j,k)+fxn_dw(i,j,k)
         isFirstOut = .false.
       end if
 
@@ -179,7 +180,8 @@ subroutine Phase2X
       dtetai = (invR - invQ) / (Gr - Gq)                  ! дельта псевдоплотности
       dui = (invR*Gq - invQ*Gr) / (Gq - Gr)               ! дельта нормальной скорости
 
-      w0i = fxn_GetW0(i,j,k)
+!      w0i = fxn_GetW0(i,j,k)
+      w0i = fxn_w0(i,j,k)
 
       fxn_dteta(1,j,k) = dtetai
       fxn_du(1,j,k) = dui
@@ -198,15 +200,15 @@ subroutine Phase2X
           write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
         write(17,"('UF:',3(';',i0),100(';',1p,g0.16))") &
             i, j, k, &
-              teta0+fx_dteta(i,j,k), rho0+fx_drho(i,j,k), fx_u0(i,j)+fx_du(i,j,k), fx_v0(i,j)+fx_dv(i,j,k), fx_GetW0(i,j,k)+fx_dw(i,j,k), &
+              teta0+fx_dteta(i,j,k), rho0+fx_drho(i,j,k), fx_u0(i,j)+fx_du(i,j,k), fx_v0(i,j)+fx_dv(i,j,k), fx_w0(i,j,k)+fx_dw(i,j,k), &
               invR, invQ, invU, invW, invD, Gr, Gq
         write(17,"('UFN:',3(';',i0),100(';',1p,g0.16))") &
             i, j, k, &
-              teta0+fxn_dteta(i,j,k), rho0+fxn_drho(i,j,k), fxn_u0(i,j)+fxn_du(i,j,k), fxn_v0(i,j)+fxn_dv(i,j,k), fxn_GetW0(i,j,k)+fxn_dw(i,j,k)
+              teta0+fxn_dteta(i,j,k), rho0+fxn_drho(i,j,k), fxn_u0(i,j)+fxn_du(i,j,k), fxn_v0(i,j)+fxn_dv(i,j,k), fxn_w0(i,j,k)+fxn_dw(i,j,k)
         i = nxx
         write(17,"('UFN:',3(';',i0),100(';',1p,g0.16))") &
             i, j, k, &
-              teta0+fxn_dteta(i,j,k), rho0+fxn_drho(i,j,k), fxn_u0(i,j)+fxn_du(i,j,k), fxn_v0(i,j)+fxn_dv(i,j,k), fxn_GetW0(i,j,k)+fxn_dw(i,j,k)
+              teta0+fxn_dteta(i,j,k), rho0+fxn_drho(i,j,k), fxn_u0(i,j)+fxn_du(i,j,k), fxn_v0(i,j)+fxn_dv(i,j,k), fxn_w0(i,j,k)+fxn_dw(i,j,k)
         isFirstOut = .false.
       end if
 
@@ -592,7 +594,7 @@ subroutine Phase2Y
       dtetai = (invR - invQ) / (Gr - Gq)                  ! дельта псевдоплотности
       dvi = (invR*Gq - invQ*Gr) / (Gq - Gr)               ! дельта нормальной скорости
 
-      w0i = fyn_GetW0(i,j,k)
+      w0i = fyn_w0(i,j,k)
 
       fyn_dteta(i,j,k) = dtetai
       fyn_du(i,j,k) = dui
@@ -605,10 +607,10 @@ subroutine Phase2Y
           write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
         write(17,"('side:',3(';',i0),100(';',1p,g0.16))") &
             i, j, k, &
-              teta0+fy_dteta(i,j,k), rho0+fy_drho(i,j,k), fy_u0(i,j)+fy_du(i,j,k), fy_v0(i,j)+fy_dv(i,j,k), fy_GetW0(i,j,k)+fy_dw(i,j,k), &
+              teta0+fy_dteta(i,j,k), rho0+fy_drho(i,j,k), fy_u0(i,j)+fy_du(i,j,k), fy_v0(i,j)+fy_dv(i,j,k), fy_w0(i,j,k)+fy_dw(i,j,k), &
               invR, invQ, invU, invW, invD, Gr, Gq
         write(17,"('UFN:;;;',100(';',1p,g0.16))") &
-              teta0+fyn_dteta(i,j,k), rho0+fyn_drho(i,j,k), fyn_u0(i,j)+fyn_du(i,j,k), fyn_v0(i,j)+fyn_dv(i,j,k), fyn_GetW0(i,j,k)+fyn_dw(i,j,k)
+              teta0+fyn_dteta(i,j,k), rho0+fyn_drho(i,j,k), fyn_u0(i,j)+fyn_du(i,j,k), fyn_v0(i,j)+fyn_dv(i,j,k), fyn_w0(i,j,k)+fyn_dw(i,j,k)
         isFirstOut = .false.
       end if
 
@@ -686,7 +688,7 @@ subroutine Phase2Y
       dtetai = (invR - invQ) / (Gr - Gq)                  ! дельта псевдоплотности
       dvi = (invR*Gq - invQ*Gr) / (Gq - Gr)               ! дельта нормальной скорости
 
-      w0i = fyn_GetW0(i,j,k)
+      !w0i = fyn_GetW0(i,j,k)
 
       fyn_dteta(i,1,k) = dtetai
       fyn_du(i,1,k) = dui
@@ -705,10 +707,10 @@ subroutine Phase2Y
           write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
         write(17,"('side:',3(';',i0),100(';',1p,g0.16))") &
             i, j, k, &
-              teta0+fy_dteta(i,j,k), rho0+fy_drho(i,j,k), fy_u0(i,j)+fy_du(i,j,k), fy_v0(i,j)+fy_dv(i,j,k), fy_GetW0(i,j,k)+fy_dw(i,j,k), &
+              teta0+fy_dteta(i,j,k), rho0+fy_drho(i,j,k), fy_u0(i,j)+fy_du(i,j,k), fy_v0(i,j)+fy_dv(i,j,k), fy_w0(i,j,k)+fy_dw(i,j,k), &
               invR, invQ, invU, invW, invD, Gr, Gq
         write(17,"('UFN:;;;',100(';',1p,g0.16))") &
-              teta0+fyn_dteta(i,j,k), rho0+fyn_drho(i,j,k), fyn_u0(i,j)+fyn_du(i,j,k), fyn_v0(i,j)+fyn_dv(i,j,k), fyn_GetW0(i,j,k)+fyn_dw(i,j,k)
+              teta0+fyn_dteta(i,j,k), rho0+fyn_drho(i,j,k), fyn_u0(i,j)+fyn_du(i,j,k), fyn_v0(i,j)+fyn_dv(i,j,k), fyn_w0(i,j,k)+fyn_dw(i,j,k)
         isFirstOut = .false.
       end if
 
@@ -739,6 +741,8 @@ subroutine Phase2Z_in
   logical:: isOwnRight                                          ! признак "ячейка справа"
   logical:: isFirstOut
 
+  isFirstOut = .true.
+
   nc = ncells                                                  ! количество рабочих ячеек
   do ic=1, nc
     i = cells.ptr(ic).i                                         ! индексы ячеек на сетке
@@ -751,9 +755,10 @@ subroutine Phase2Z_in
     isFirstOut = .true.
     do k=2, nz-1                                                ! внутренние горизонтальные грани
 
-      uf = fz_GetW0(i,j,k) + fz_dw(i,j,k)                        ! скорость на грани
-      ul = c_GetW(i,j,k-1,1) + cs_dw(i,j,k-1)
-      ur = c_GetW(i,j,k,1) + cs_dw(i,j,k)
+      !uf = fz_GetW0(i,j,k) + fz_dw(i,j,k)                        ! скорость на грани
+      uf = fz_w0(i,j,k) + fz_dw(i,j,k)                        ! скорость на грани
+      ul = cs_w0(i,j,k-1) + cs_dw(i,j,k-1)
+      ur = cs_w0(i,j,k) + cs_dw(i,j,k)
       uf = (ul + ur) / 2. - fz_zp(i,j,k)
       M = uf / cs_sound                                         ! число Маха
 
@@ -814,7 +819,7 @@ subroutine Phase2Z_in
       fzn_v(i,j,k) = dvi + cn_v0(i,j)
 
       if(IsDebSideZ(i, j, k)) then
-        if(isFirstOut) &
+        !if(isFirstOut) &
           write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
         write(17,"('side:',3(';',i0),100(';',1p,g0.16))") &
             i, j, k, &
@@ -833,7 +838,7 @@ subroutine Phase2Z_in
 
     k = nz
 
-    uf = cs_GetW0(i,j,k-1) + cs_dw(i,j,k-1)                        ! скорость в придонной ячейке
+    uf = cs_w0(i,j,k-1) + cs_dw(i,j,k-1)                        ! скорость в придонной ячейке
     M = uf / cs_sound                                         ! число Маха
 
     ! инвариант Q(сверху вниз):
@@ -886,7 +891,8 @@ subroutine Phase2Z_in
     fzn_v(i,j,k) = dvi + cn_v0(i,j)
 
     if(IsDebSideZ(i, j, k)) then
-      if(isFirstOut) write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
+!      if(isFirstOut) &
+        write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
       write(17,"('side:',3(';',i0),100(';',1p,g0.16))") &
           i, j, k, &
             fzn_dteta(i,j,k), fzn_drho(i,j,k), fzn_du(i,j,k), fzn_dv(i,j,k), fzn_dw(i,j,k), &
@@ -927,7 +933,7 @@ subroutine Phase2Z_in
     fzn_v(i,j,k) = dvi + cn_v0(i,j)
 
     if(IsDebSideZ(i, j, k)) then
-      if(isFirstOut) &
+      !if(isFirstOut) &
         write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
         write(17,"('side:',3(';',i0),';',3(';',1p,g0.16),';',100(';',1p,g0.16))") &
             i, j, k, &
@@ -1044,12 +1050,12 @@ subroutine Phase2Z_top
       end do
 
       if(IsDebSideX(i, j, -1)) then
-        write(17,"(/a,1000(';',i0))") "Phase2Z_top;i;j;;fxn_dH;fxn_z0;"
-        write(17,"(a,2(';',1p,g24.16),a,1000(';',1p,g24.16))") ";;;",fxn_dH(i,j),fxn_z0(i,j)
+        write(17,"(/a,1000(';',i0))") "Phase 2-Z-top-X;i;j;;fxn_dH;fxn_z0;"
+        write(17,"(2(';',i0),';',2(';',1p,g24.16),a,1000(';',1p,g24.16))") i, j, fxn_dH(i,j), fxn_z0(i,j)
         write(17,"(a)") ";;;k;fxn_z;fxn_w0;fxn_teta;fxn_rho;fxn_u;fxn_v;fxn_w"
         do k=1,ncz
           if(IsDebSideX(i,j,k)) then
-            write(17,"('UFN:;;;',i0,';',100(';',1p,g0.16))") k, &
+            write(17,"('UFN:;;;',i0,100(';',1p,g0.16))") k, &
                   fxn_z(i,j,k), fxn_w0(i,j,k), fxn_teta(i,j,k), fxn_rho(i,j,k), fxn_u(i,j,k), fxn_v(i,j,k), fxn_w(i,j,k)
           end if
         end do
@@ -1147,12 +1153,12 @@ subroutine Phase2Z_top
       end do
 
       if(IsDebSideY(i, j, -1)) then
-        write(17,"(a,1000(';',i0))") "/Phase2Z_top;i;j;;fyn_dH;fyn_z0"
-        write(17,"(a,2(';',1p,g24.16),a,1000(';',1p,g24.16))") ";;;",fyn_dH(i,j),fyn_z0(i,j)
+        write(17,"(a,1000(';',i0))") "/Phase 2-Z-top-Y;i;j;;fyn_dH;fyn_z0"
+        write(17,"(2(';',i0),';',2(';',1p,g24.16),a,1000(';',1p,g24.16))") i, j, fyn_dH(i,j), fyn_z0(i,j)
         write(17,"(a)") ";;;k;fyn_z;fyn_w0;fyn_teta;fyn_rho;fyn_u;fyn_v;fyn_w"
         do k=1,ncz
           if(IsDebSideY(i,j,k)) then
-            write(17,"('UFN:;;;',i0,';',100(';',1p,g0.16))") k, &
+            write(17,"('UFN:;;;',i0,100(';',1p,g0.16))") k, &
                   fyn_z(i,j,k), fyn_w0(i,j,k), fyn_teta(i,j,k), fyn_rho(i,j,k), fyn_u(i,j,k), fyn_v(i,j,k), fyn_w(i,j,k)
           end if
         end do
@@ -1175,7 +1181,7 @@ subroutine Phase2Z_top
     jl = j
 
     if(IsDebSideZ(i, j, -1)) then
-      write(17,"(/'Phase 2-Z-top',2(';',i0))") i, j
+      write(17,"(/'Phase 2-Z-top-Z',2(';',i0))") i, j
     endif
 
     ! инвариант R (снизу вверх):
