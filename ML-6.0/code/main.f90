@@ -1,12 +1,6 @@
 ! Программа моделирования негидростатики 3D
 ! Разделение переменных на 2 части: переменные мелкой воды и дельта-переменные
 
-! invs.f90 subroutine TransportInvZ
-!     [не точно] заменил
-!           dz = fz_z(i,j,k) - fz_z(i,j,ko)
-!           dz = fzs_z(i,j,k) - fzs_z(i,j,ko)
-!     производная по z на слое t[n]
-
 program main
   !use, intrinsic :: iso_fortran_env, only: compiler_version, compiler_options
   use variables
@@ -181,7 +175,7 @@ subroutine info(startTime)
   Et3 = (Ek3 + Ep - Ep0) / vol0
 
   if(isFirstTimeHere) then
-    write(fname,"(a,i0,a)") "./stat-", test_numb, ".csv"
+    write(fname,"(a,i0,a)") "./stat-", taskNum, ".csv"
     open(117, file=fname)
     write(117,*) "t(sec);t(day);wind;maxVel2;maxVel3;vol;M;t-M;tm-M;Et2;Et3;Ek2;Ek3;Ep;hmin;hmax;hmin_sw;hmax_sw;minTeta;maxTeta"
     isFirstTimeHere=.false.
@@ -325,6 +319,8 @@ subroutine Step
   integer :: i,j,k
   logical isFirstDeb
 
+  call SetupVariableBCs                                         ! обработка данных для ГУ, переменных во времени
+
   call ShWater                                                  ! расчет 0-переменных по мелкой воде
 
   call Phase1
@@ -339,11 +335,11 @@ subroutine Step
   !call CheckConstX
   !call TestSym                      ! тест на симметрию относительно Y=0: h(y)=h(-y), u(y)=u(-y), v(y)=-v(-y)
 
+# if 0
   do i=1,ncx; do j=1,ncy; do k=1,ncz
     if(c_dteta(i,j,k)/=cs_dteta(k,j,i)) then
       debdum=0
     endif
-# if 0
     if(c_drho(i,j,k)/=cs_drho(i,j,k)) then
       debdum=1
     endif
@@ -356,8 +352,8 @@ subroutine Step
     if(c_dw(i,j,k)/=cs_dw(i,j,k)) then
       debdum=4
     endif
-#endif
   end do; end do; end do
+#endif
 
 #if 0
   do i=1,nxx; do j=1,nxy; do k=1,ncz
@@ -482,7 +478,7 @@ subroutine SaveTaskParams
 
   open(27,file="./out/info.txt")
 
-  write(27,*) "test_numb=",test_numb
+  write(27,*) "taskNum=",taskNum
   write(27,*) "nx=", nx
   write(27,*) "ny=", ny
   write(27,*) "nz=", nz

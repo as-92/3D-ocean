@@ -7,7 +7,51 @@ module variables
   logical, parameter:: optLimitMinHF = .false.          ! для потоковых переменных: if(h<eps) h = eps
   logical, parameter:: optNoAssert = .false.            ! отмена диагностики и авоста по ассертам
 
+  integer(1), parameter:: BC_DELETED = -1                           ! уничтоженная грань
+  integer(1), parameter:: BC_INNER = 0                              ! внутренняя грань
+  integer(1), parameter:: BC_PERIODIC = 1                           ! периодический ГУ
+  integer(1), parameter:: BC_SLIDE = 2                              ! скольжение
+  integer(1), parameter:: BC_STICK = 5                              ! прилипание
+  integer(1), parameter:: BC_IN = 6                                 ! вток
+  integer(1), parameter:: BC_IN_T = 7                               ! вток, переменный по времени, индивидуальный для каждой грани
+  integer(1), parameter:: BC_FIX_U = 8                              ! на входе задана скорость
+  integer(1), parameter:: BC_H_VAR_T = 9
+  integer(1), parameter:: NBC = 9                                   ! максимальный номер ГУ для грани
+
+  integer(1), parameter:: CELL_DELETED_SPEC = -2                    ! уничтоженная специальная ячейка
+  integer(1), parameter:: CELL_DELETED = -1                         ! уничтоженная ячейка
+  integer(1), parameter:: CELL_INNER = 0                            ! внутренняя ячейка
+  integer(1), parameter:: CELL_INNER_SPEC = 1                       ! внутренняя спец-ячейка
+
+  integer(4), parameter:: T_INVR=1, T_INVQ=2, T_INVU=3, T_INVW=5, T_INVD=4    ! номера инвариантов
+  integer(4), parameter:: DIRM=0, DIRP=1                            ! направления
+
   real(R8):: NAN
+
+  type TBcData                                                      ! данные для расчета ГУ "вток"
+    real(R8):: h                                                    ! толщина слоя
+    real(R8):: u                                                    ! компоненты скорости
+    real(R8):: v
+    real(R8):: w
+    real(R8):: rho                                                  ! реальная плотность
+    real(R8):: teta
+    real(R8):: T                                                    ! температура
+    integer:: ind                                                   ! ссылка на дополнительные данные
+  end type TBcData
+
+  type Vector2
+    real(R8):: x, y
+  end type
+
+  type Vector
+    real(R8):: x, y, z
+  end type
+
+  type TopexData
+    integer:: i, j                                                  ! индекс ячейки, ближайшей к точке данных
+    real(R8):: lat, lon                                             ! географические координаты точки данных
+    real(R8):: mAmp(3), mPh(3), sAmp(3), sPh(3)                     ! характеристики прилива
+  end type
 
   integer:: bcTypeTopT,bcTypeTopU, bcTypeX, bcTypeY
   integer:: iout, ioutX, ioutY
@@ -41,6 +85,29 @@ module variables
   logical:: isConsFilterZ0                            ! фильтрация консервативного уровня поверхности
   logical:: isImplCoriolis                            ! расчет по полунеявной формуле Кориолиса
   real(R8):: sig_ex
+
+  integer(4) nx,ny,nz,nprint,istep,nt,printproc,kface
+  integer(4) print_debug,print_density,print_height
+  integer(4) print_velocity,print_velocity_by_color
+  integer:: taskNum
+  !INTEGER(4) isNanHeight,isNanVelocity,isNanDensity,test_numb,mI,mJ,mK,loadStep,loadIout
+
+  real(R8):: dl, dw, dh, xmin, xmax, ymin, ymax
+  real(R8):: gxmax, gxmin, gymax, gymin                             ! мин-мах в градусах
+  real(R8):: lgradx, lgrady                                         ! длина одного градуса в метрах
+  real(R8):: cfl, dt, ttime, g, pan, sig_0, sig, sigma, sigma2Ph
+
+  real(R8):: ekin_0         ! начальная кинетическая энергия
+  real(R8):: epot_0         ! начальная потенциальная энергия
+  real(R8):: etot_0         ! начальная полная энергия
+  real(R8):: vol_0
+  real(R8):: totmass_0
+  real(R8):: vol
+  real(R8):: maxt           ! ограничение на расчетное время (или 0)
+  real(R8):: tprint         ! частота выдачи графики по времени (или 0)
+
+  real(R8) :: talpha, tbeta, b0, q0, maxSound
+  real(R8), pointer :: ubcl0(:), ubcr0(:)
 
   real(R8),pointer:: x(:), y(:)                       ! координаты прямоугольной сетки
   real(R8),pointer:: c_b(:,:),fx_b(:,:),fy_b(:,:)     ! уровень дна
@@ -130,57 +197,21 @@ module variables
 
   real(R8),pointer:: c_tmp(:,:,:), DIMUC(:,:,:), DIMVC(:,:,:)
 
-  integer(1), parameter:: BC_DELETED = -1                           ! уничтоженная грань
-  integer(1), parameter:: BC_INNER = 0                              ! внутренняя грань
-  integer(1), parameter:: BC_PERIODIC = 1                           ! периодический ГУ
-  integer(1), parameter:: BC_SLIDE = 2                              ! скольжение
-  integer(1), parameter:: BC_STICK = 5                              ! прилипание
-  integer(1), parameter:: BC_IN = 6                                 ! вток
-  integer(1), parameter:: BC_IN_T = 7                               ! вток, переменный по времени, индивидуальный для каждой грани
-  integer(1), parameter:: NBC = 7                                   ! максимальный номер ГУ для грани
+  type(TBcData), pointer:: bcData(:)                            ! данные для ГУ "вход". Индекс = fx_bc или fy_bc
+  integer:: nBcData                                             ! количество элементов в bcData
+  integer(4), pointer:: fx_bc(:,:), fy_bc(:,:)                  ! индекс данных с граничными условиями (индекс в bcData) или 0
 
-  integer(1), parameter:: CELL_DELETED_SPEC = -2                    ! уничтоженная специальная ячейка
-  integer(1), parameter:: CELL_DELETED = -1                         ! уничтоженная ячейка
-  integer(1), parameter:: CELL_INNER = 0                            ! внутренняя ячейка
+  ! для задачи БМ:
+  real(R8):: dzg0, dzg1                                         ! колебания уровня в двух точках горла
+  real(R8), pointer:: ksiWS(:,:)                                ! относительное положение граней на линии поперёк Горла
+  logical:: needCalc_BC_H_VAR_T
 
-  integer(4), parameter:: T_INVR=1, T_INVQ=2, T_INVU=3, T_INVW=5, T_INVD=4    ! номера инвариантов
-  integer(4), parameter:: DIRM=0, DIRP=1                            ! направления
+  type(TopexData) topex(100)                                    ! данные приливов
+  type(Vector2):: gspos(2)                                      ! кординаты точек на линии поперёк Горла
 
-  type TBcData                                                      ! данные для расчета ГУ "вток"
-    real(R8):: h                                                    ! толщина слоя
-    real(R8):: u                                                    ! компоненты скорости
-    real(R8):: v
-    real(R8):: T                                                    ! температура
-  end type TBcData
-
-  type(TBcData), pointer:: bcData(:,:)                              ! данные для ГУ "вход". Первый индекс - номер слоя (или -1 для МВ)
-
-  real(R8), pointer :: c_dx(:), c_dy(:)                             ! шаги сетки (размеры ячеек в прямоугольной сетке)
-  integer(1), pointer:: fx_type(:,:), fy_type(:,:)                  ! типы граней
-  integer(4), pointer:: fx_bc(:,:), fy_bc(:,:)                      ! индекс данных с граничными условиями (индекс в bcData) или 0
-
-  integer(1), pointer:: c_type(:,:)                                 ! типы ячеек
-
-  integer(4) nx,ny,nz,nprint,istep,nt,printproc,kface
-  integer(4) print_debug,print_density,print_height
-  integer(4) print_velocity,print_velocity_by_color
-  integer:: test_numb
-  !INTEGER(4) isNanHeight,isNanVelocity,isNanDensity,test_numb,mI,mJ,mK,loadStep,loadIout
-
-  real(R8):: dl, dw, dh, xmin, xmax, ymin, ymax
-  real(R8):: cfl, dt, ttime, g, pan, sig_0, sig, sigma, sigma2Ph
-
-  real(R8):: ekin_0         ! начальная кинетическая энергия
-  real(R8):: epot_0         ! начальная потенциальная энергия
-  real(R8):: etot_0         ! начальная полная энергия
-  real(R8):: vol_0
-  real(R8):: totmass_0
-  real(R8):: vol
-  real(R8):: maxt           ! ограничение на расчетное время (или 0)
-  real(R8):: tprint         ! частота выдачи графики по времени (или 0)
-
-  real(R8) :: talpha, tbeta, b0, q0, maxSound
-  real(R8), pointer :: ubcl0(:), ubcr0(:)
+  real(R8), pointer :: c_dx(:), c_dy(:)                         ! шаги сетки (размеры ячеек в прямоугольной сетке)
+  integer(1), pointer:: c_type(:,:)                             ! типы ячеек
+  integer(1), pointer:: fx_type(:,:), fy_type(:,:)              ! типы граней
 
   ! реальное размещение потоковых переменных:
   real(R8), allocatable, target:: fx_dteta1(:,:,:), fx_du1(:,:,:), fx_dv1(:,:,:), fx_dw1(:,:,:), fx_drho1(:,:,:), &
@@ -239,7 +270,7 @@ module variables
 
   real(R8), parameter:: eps = 1.d-5
   real(R8), parameter:: eps1 = 1.d-7
-  real(R8), parameter:: pi = 2. * acos(0.q0)
+  real(R8), parameter:: PI = 3.14159265358979d0
 
 contains !-----------------------------------------------------------------------------------------------------
 
@@ -365,6 +396,7 @@ contains !----------------------------------------------------------------------
     fy_type(:,ny) = bcTypeY
     fy_bc = 0                             ! нет ГУ с данными на границе
 
+    needCalc_BC_H_VAR_T = .false.
 
   end subroutine allocate
 
@@ -535,191 +567,31 @@ contains !----------------------------------------------------------------------
   end function
 
   !----------------------------------------------------------------------------------------------------------------------------
-#if 0
-  subroutine c_CalcAbsVars(tlay)
-    integer:: tlay
-    real(R8), pointer:: c
-    integer:: i,j,k
 
-    select case(tlay)
-      case(0)
-        do i=1,ncx; do j=1,ncy; do k=1,ncz
-          c_teta(i,j,k) = teta0     + c_dteta(i,j,k)
-          c_rho(i,j,k)  = rho0      + c_drho(i,j,k)
-          c_u(i,j,k)    = c_u0(i,j) + c_du(i,j,k)
-          c_v(i,j,k)    = c_v0(i,j) + c_dv(i,j,k)
-          c_w(i,j,k)    = c_w0(i,j,k) + c_dw(i,j,k)
-        end do; end do; end do
-      case(1)
-        do i=1,ncx; do j=1,ncy; do k=1,ncz
-          cs_teta(i,j,k) = teta0      + cs_dteta(i,j,k)
-          cs_rho(i,j,k)  = rho0       + cs_drho(i,j,k)
-          cs_u(i,j,k)    = cs_u0(i,j) + cs_du(i,j,k)
-          cs_v(i,j,k)    = cs_v0(i,j) + cs_dv(i,j,k)
-          cs_w(i,j,k)    = cs_w0(i,j,k) + cs_dw(i,j,k)
-        end do; end do; end do
-      case default
-        call avost
-    end select
-  end
+  ! есть ли справа от грани рабочая ячейка
+  function fx_IsOwnRight(i, j)
+    integer(4):: i, j
+    logical:: fx_IsOwnRight
+    if(i==ncx) then                                             ! если грань на левом краю области
+      fx_IsOwnRight = .false.                                   ! .. справа ячейки быть не может
+    else
+      fx_IsOwnRight = c_type(i, j) > CELL_DELETED
+    end if
+  end function
 
   !----------------------------------------------------------------------------------------------------------------------------
 
-  subroutine fx_CalcAbsVars(tlay)
-    integer:: tlay
-    real(R8), pointer:: c
-    integer:: i,j,k
+  ! есть ли справа от грани рабочая ячейка
+  function fy_IsOwnRight(i, j)
+    integer(4):: i, j
+    logical:: fy_IsOwnRight
+    if(j==ncy) then                                             ! если грань на левом краю области
+      fy_IsOwnRight = .false.                                   ! .. справа ячейки быть не может
+    else
+      fy_IsOwnRight = c_type(i, j) > CELL_DELETED
+    end if
+  end function
 
-    select case(tlay)
-      case(0)
-        do i=1,nxx; do j=1,nxy
-          if(fx_type(i,j)<0) cycle                                ! пропускаем не рабочие грани
-          do k=1,nz
-            fx_teta(i,j,k) = teta0      + fx_dteta(i,j,k)
-            fx_rho(i,j,k)  = rho0       + fx_drho(i,j,k)
-            fx_u(i,j,k)    = fx_u0(i,j) + fx_du(i,j,k)
-            fx_v(i,j,k)    = fx_v0(i,j) + fx_dv(i,j,k)
-            fx_w(i,j,k)    = fx_w0(i,j,k) + fx_dw(i,j,k)
-          end do
-        end do; end do
-      case(1)
-        do i=1,nxx; do j=1,nxy
-          if(fx_type(i,j)<0) cycle                                ! пропускаем не рабочие грани
-          do k=1,nz
-            fxn_teta(i,j,k) = teta0       + fxn_dteta(i,j,k)
-            fxn_rho(i,j,k)  = rho0        + fxn_drho(i,j,k)
-            fxn_u(i,j,k)    = fxn_u0(i,j) + fxn_du(i,j,k)
-            fxn_v(i,j,k)    = fxn_v0(i,j) + fxn_dv(i,j,k)
-            fxn_w(i,j,k)    = fxn_w0(i,j,k) + fxn_dw(i,j,k)
-          end do
-        end do; end do
-      case default
-        call avost
-    end select
-  end
-
-  !----------------------------------------------------------------------------------------------------------------------------
-
-  subroutine fy_CalcAbsVars(tlay)
-    integer:: tlay
-    real(R8), pointer:: c
-    integer:: i,j,k
-
-    select case(tlay)
-      case(0)
-        do i=1,nyx; do j=1,nyy
-          if(fy_type(i,j)<0) cycle
-          do k=1,nz
-            fy_teta(i,j,k) = teta0      + fy_dteta(i,j,k)
-            fy_rho(i,j,k)  = rho0       + fy_drho(i,j,k)
-            fy_u(i,j,k)    = fy_u0(i,j) + fy_du(i,j,k)
-            fy_v(i,j,k)    = fy_v0(i,j) + fy_dv(i,j,k)
-            fy_w(i,j,k)    = fy_w0(i,j,k) + fy_dw(i,j,k)
-          end do
-        end do; end do
-      case(1)
-        do i=1,nyx; do j=1,nyy
-          if(fy_type(i,j)<0) cycle
-          do k=1,nz
-            fyn_teta(i,j,k) = teta0       + fyn_dteta(i,j,k)
-            fyn_rho(i,j,k)  = rho0        + fyn_drho(i,j,k)
-            fyn_u(i,j,k)    = fyn_u0(i,j) + fyn_du(i,j,k)
-            fyn_v(i,j,k)    = fyn_v0(i,j) + fyn_dv(i,j,k)
-            fyn_w(i,j,k)    = fyn_w0(i,j,k) + fyn_dw(i,j,k)
-          end do
-        end do; end do
-      case default
-        call avost
-    end select
-  end
-
-  !----------------------------------------------------------------------------------------------------------------------------
-
-  subroutine c_CalcDelVars(tlay)
-    integer:: tlay
-    real(R8), pointer:: c
-    integer:: i,j,k
-
-    select case(tlay)
-      case(0)
-        do k=1,ncz; do j=1,ncy; do i=1,ncx
-          c_dteta(i,j,k) = -teta0     + c_teta(i,j,k)
-          c_drho(i,j,k)  = -rho0      + c_rho(i,j,k)
-          c_du(i,j,k)    = -c_u0(i,j) + c_u(i,j,k)
-          c_dv(i,j,k)    = -c_v0(i,j) + c_v(i,j,k)
-          c_dw(i,j,k)    = -c_w0(i,j,k) + c_w(i,j,k)
-        end do; end do; end do
-      case(1)
-        do k=1,ncz; do j=1,ncy; do i=1,ncx
-          cs_dteta(i,j,k) = -teta0      + cs_teta(i,j,k)
-          cs_drho(i,j,k)  = -rho0       + cs_rho(i,j,k)
-          cs_du(i,j,k)    = -cs_u0(i,j) + cs_u(i,j,k)
-          cs_dv(i,j,k)    = -cs_v0(i,j) + cs_v(i,j,k)
-          cs_dw(i,j,k)    = -cs_w0(i,j,k) + cs_w(i,j,k)
-        end do; end do; end do
-      case default
-        call avost
-    end select
-  end
-
-  !----------------------------------------------------------------------------------------------------------------------------
-
-  subroutine fx_CalcDelVars(tlay)
-    integer:: tlay
-    real(R8), pointer:: c
-    integer:: i,j,k
-
-    select case(tlay)
-      case(0)
-        do k=1,nz; do j=1,nxy; do i=1,nxx
-          fx_dteta(i,j,k) = -teta0      + fx_teta(i,j,k)
-          fx_drho(i,j,k)  = -rho0       + fx_rho(i,j,k)
-          fx_du(i,j,k)    = -fx_u0(i,j) + fx_u(i,j,k)
-          fx_dv(i,j,k)    = -fx_v0(i,j) + fx_v(i,j,k)
-          fx_dw(i,j,k)    = -fx_w0(i,j,k) + fx_w(i,j,k)
-        end do; end do; end do
-      case(1)
-        do k=1,nz; do j=1,nxy; do i=1,nxx
-          fxn_dteta(i,j,k) = -teta0       + fxn_teta(i,j,k)
-          fxn_drho(i,j,k)  = -rho0        + fxn_rho(i,j,k)
-          fxn_du(i,j,k)    = -fxn_u0(i,j) + fxn_u(i,j,k)
-          fxn_dv(i,j,k)    = -fxn_v0(i,j) + fxn_v(i,j,k)
-          fxn_dw(i,j,k)    = -fxn_w0(i,j,k) + fxn_w(i,j,k)
-        end do; end do; end do
-      case default
-        call avost
-    end select
-  end
-
-  !----------------------------------------------------------------------------------------------------------------------------
-
-  subroutine fy_CalcDelVars(tlay)
-    integer:: tlay
-    real(R8), pointer:: c
-    integer:: i,j,k
-
-    select case(tlay)
-      case(0)
-        do i=1,nyx; do j=1,nyy; do k=1,nz
-          fy_dteta(i,j,k) = -teta0      + fy_teta(i,j,k)
-          fy_drho(i,j,k)  = -rho0       + fy_rho(i,j,k)
-          fy_du(i,j,k)    = -fy_u0(i,j) + fy_u(i,j,k)
-          fy_dv(i,j,k)    = -fy_v0(i,j) + fy_v(i,j,k)
-          fy_dw(i,j,k)    = -fy_w0(i,j,k) + fy_w(i,j,k)
-        end do; end do; end do
-      case(1)
-        do i=1,nyx; do j=1,nyy; do k=1,nz
-          fyn_dteta(i,j,k) = -teta0       + fyn_teta(i,j,k)
-          fyn_drho(i,j,k)  = -rho0        + fyn_rho(i,j,k)
-          fyn_du(i,j,k)    = -fyn_u0(i,j) + fyn_u(i,j,k)
-          fyn_dv(i,j,k)    = -fyn_v0(i,j) + fyn_v(i,j,k)
-          fyn_dw(i,j,k)    = -fyn_w0(i,j,k) + fyn_w(i,j,k)
-        end do; end do; end do
-      case default
-        call avost
-    end select
-  end
-#endif
   !----------------------------------------------------------------------------------------------------------------------------
 
   function cs_GetG(i,j,k)
@@ -979,6 +851,12 @@ contains !----------------------------------------------------------------------
     GetCVelocity = u0 / CFD_L * CFD_T
   end function
 
+  ! вычисление размерной скорости по безразмерной скорости
+  function GetCVelocityZ(u0)
+    real(R8) u0, GetCVelocityZ
+    GetCVelocityZ = u0 / CFD_H * CFD_T
+  end function
+
   ! вычисление размерной глубины по безразмерной глубине
   function GetCDepth(h0)
     real(R8) h0, GetCDepth
@@ -1185,27 +1063,36 @@ contains !----------------------------------------------------------------------
 
   !---------------------------------------------------------------------------------------------------------------------
 
-  subroutine avost
-    write(*,"(a,i0)") "AVOST. step=",istep
+  subroutine avost(text, i)
+    character(*), optional:: text
+    integer, optional:: i
+
+    if (present(text) .and. present(i)) then
+      write(*,"(a,i0,3a,i0)") "step=", istep, ". AVOST: ", text, ":", i
+    else if (present(text)) then
+      write(*,"(a,i0,2a)") "step=", istep, ". AVOST: ", text
+    else
+      write(*,"(a,i0,2a)") "step=", istep, ". AVOST"
+    end if
     stop
   end subroutine
 
   !---------------------------------------------------------------------------------------------------------------------
 
   subroutine assert(cond, text)
-    logical cond
-    character(*) text
+    logical:: cond
+    character(*), optional:: text
     logical, save:: isFirst = .true.
 
     if(.not. cond) then
       if(isFirst) then
-        write(*,"(a,a)") "ASSERT! ", text
+        if (present(text)) write(*,"(a,a)") "ASSERT! ", text
         isFirst = .false.
       end if
       if(optNoAssert) return
       if(nprint>0 .or. tprint>0.) then
         iout = 999999
-#if 1
+#if 0
         call Gout
 #endif
       end if
@@ -1229,7 +1116,7 @@ contains !----------------------------------------------------------------------
       if(optNoAssert) return
       if(nprint>0 .or. tprint>0.) then
         iout = 999999
-#if 1
+#if 0
         call Gout
 #endif
       end if

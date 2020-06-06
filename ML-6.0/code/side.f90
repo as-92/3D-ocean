@@ -8,13 +8,12 @@ subroutine Phase2X
     subroutine TransportHX(i, j, off, inv); integer(4):: i, j, off; real(R8):: inv; end
   end interface
 
-  integer(4):: i, j, k, il, ir, is, ns
+  integer(4):: i, j, k, il, ir, is, ic, ns
   real(R8):: invR, invQ, invU, invW, invD                             ! новые инварианты
   real(R8):: soundr, soundl, sound, ul, ur, uf, M, Gr, Gq
   real(R8):: drhoi, dtetai, dui, dvi, dwi
   real(R8):: w0i, zi, z0
   real(R8):: H0l, H0r, Hl, Hr, invH
-  logical:: isOwnRight                                          ! признак "ячейка справа"
   logical:: isFirstOut
 
   ! внутренние грани:
@@ -24,9 +23,11 @@ subroutine Phase2X
     j = fx_sides(BC_INNER).ptr(is).j
     call assertn(i>1 .and. i<nxx, "Phase2_X. Ошибка сетки (BC_INNER)", i, j, -1)
 
+#if DLEV>0
     if(IsDebSideX(i, j, -1)) then
       write(17,"(/'Phase 2-X',2(';',i0),';;inner')") i, j
     endif
+#endif
 
     il = i-1
     ir = i
@@ -94,6 +95,7 @@ subroutine Phase2X
       fxn_dw(i,j,k) = dwi                                 ! вертикальная скорость
       fxn_drho(i,j,k) = drhoi                             ! плотность
 
+#if DLEV>0
       if(IsDebSideX(i, j, k)) then
         !if(isFirstOut) &
           write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
@@ -105,6 +107,7 @@ subroutine Phase2X
               teta0+fxn_dteta(i,j,k), rho0+fxn_drho(i,j,k), fxn_u0(i,j)+fxn_du(i,j,k), fxn_v0(i,j)+fxn_dv(i,j,k), fxn_w0(i,j,k)+fxn_dw(i,j,k)
         isFirstOut = .false.
       end if
+#endif
 
     end do      ! k
 
@@ -112,398 +115,12 @@ subroutine Phase2X
 
   !.. граничные условия ...................................................................
 
-  ! периодические ГУ:
-  ns = nfx_sides(BC_PERIODIC)                                   ! количество граней
-  do is=1, ns
-    i = fx_sides(BC_PERIODIC).ptr(is).i                         ! индексы грани на сетке
-    j = fx_sides(BC_PERIODIC).ptr(is).j
-    call assertn(i==1 .or. i==nxx, "Phase2_X, периодические ГУ", i,j,-1)
-
-    if(i/=1) cycle                                              ! только для левой границы
-
-    if(IsDebSideX(i, j, -1)) then
-      write(17,"(/'Phase 2-X',2(';',i0),';;periodic')") i, j
-    endif
-
-    il = ncx                                                    ! ячейка слева (крайняя правая)
-    ir = 1                                                      ! ячейка справа
-
-    isFirstOut = .true.
-    do k=1, ncz
-
-      ! скорость на грани:
-      !uf = fx_u0(i,j) + fx_du(i,j,k)                    ! скорость на грани
-      ul = cs_u(il,j,k) !c_GetU(il,j,k,1)
-      ur = cs_u(ir,j,k) !c_GetU(ir,j,k,1)
-      uf=(ul + ur) / 2.
-      M = uf / cs_sound
-
-      if(abs(M)>0.9) then
-        write(*,*) "ERROR in Phase2X: |M|>1. side (i,j,k):", i, j, k
-        call avost
-      endif
-
-      ! инвариант R:
-      call TransportInvX(T_INVR, nxx, j, k, DIRP, invR)        ! перенос через левую ячейку вправо
-      Gr = cs_G(il,j,k)
-
-      ! инвариант Q:
-      call TransportInvX(T_INVQ, 1, j, k, DIRM, invQ)          ! перенос через правую ячейку влево
-      Gq = -cs_G(ir,j,k)
-
-      ! инварианты U и D:
-      if(M>eps) then
-        call TransportInvX(T_INVU, nxx, j, k, DIRP, invU)        ! перенос через левую ячейку вправо
-        call TransportInvX(T_INVW, nxx, j, k, DIRP, invW)      ! перенос через левую ячейку вправо
-        call TransportInvX(T_INVD, nxx, j, k, DIRP, invD)        ! перенос через левую ячейку вправо
-      else if(M<-eps) then
-        call TransportInvX(T_INVU, 1, j, k, DIRM, invU)          ! перенос через правую ячейку влево
-        call TransportInvX(T_INVW, 1, j, k, DIRM, invW)      ! перенос через правую ячейку влево
-        call TransportInvX(T_INVD, 1, j, k, DIRM, invD)          ! перенос через правую ячейку влево
-      else
-        invU = (cs_dv(il,j,k) + cs_dv(ir,j,k)) / 2.
-        invW = (cs_dw(il,j,k) + cs_dw(ir,j,k)) / 2.
-        invD = (cs_drho(il,j,k) + cs_drho(ir,j,k)) / 2.
-      end if
-
-      ! восстанавливаем значения из инвариантов:
-      drhoi = invD                                        ! дельта плотности
-      dvi = invU                                          ! дельта тангенцальной скорости
-      dwi = invW                                          ! дельта вертикальной скорости
-
-      ! invR = du + Gr * dteta
-      ! invQ = du + Gq * dteta
-      !----------------------------------
-      ! invR - invQ = (Gr - Gq) * dteta
-      ! invR*Gq - invQ*Gr = (Gq - Gr) * du
-
-      dtetai = (invR - invQ) / (Gr - Gq)                  ! дельта псевдоплотности
-      dui = (invR*Gq - invQ*Gr) / (Gq - Gr)               ! дельта нормальной скорости
-
-!      w0i = fxn_GetW0(i,j,k)
-      w0i = fxn_w0(i,j,k)
-
-      fxn_dteta(1,j,k) = dtetai
-      fxn_du(1,j,k) = dui
-      fxn_dv(1,j,k) = dvi                                 ! тангенцальная скорость
-      fxn_dw(1,j,k) = dwi                                 ! вертикальная скорость
-      fxn_drho(1,j,k) = drhoi                             ! плотность
-
-      fxn_dteta(nxx,j,k) = fxn_dteta(1,j,k)
-      fxn_du(nxx,j,k) = fxn_du(1,j,k)
-      fxn_dv(nxx,j,k) = fxn_dv(1,j,k)
-      fxn_dw(nxx,j,k) = fxn_dw(1,j,k)
-      fxn_drho(nxx,j,k) = fxn_drho(1,j,k)
-
-      if(IsDebSideX(i, j, -1)) then
-        if(isFirstOut) &
-          write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
-        write(17,"('UF:',3(';',i0),100(';',1p,g0.16))") &
-            i, j, k, &
-              teta0+fx_dteta(i,j,k), rho0+fx_drho(i,j,k), fx_u0(i,j)+fx_du(i,j,k), fx_v0(i,j)+fx_dv(i,j,k), fx_w0(i,j,k)+fx_dw(i,j,k), &
-              invR, invQ, invU, invW, invD, Gr, Gq
-        write(17,"('UFN:',3(';',i0),100(';',1p,g0.16))") &
-            i, j, k, &
-              teta0+fxn_dteta(i,j,k), rho0+fxn_drho(i,j,k), fxn_u0(i,j)+fxn_du(i,j,k), fxn_v0(i,j)+fxn_dv(i,j,k), fxn_w0(i,j,k)+fxn_dw(i,j,k)
-        i = nxx
-        write(17,"('UFN:',3(';',i0),100(';',1p,g0.16))") &
-            i, j, k, &
-              teta0+fxn_dteta(i,j,k), rho0+fxn_drho(i,j,k), fxn_u0(i,j)+fxn_du(i,j,k), fxn_v0(i,j)+fxn_dv(i,j,k), fxn_w0(i,j,k)+fxn_dw(i,j,k)
-        isFirstOut = .false.
-      end if
-
-    end do   ! do k
-
-  end do  ! do is
-
-  !. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
-
-#if 0
-  ! ГУ "стенка с проскальзыванием":
-  ns = nfx_sides(BC_SLIDE)                                      ! количество граней
-  do is=1, ns
-    i = fx_sides(BC_SLIDE).ptr(is).i                            ! индексы грани на сетке
-    j = fx_sides(BC_SLIDE).ptr(is).j
-
-    if(IsDebSideX(i, j, -1)) then
-      debdum = 0
-    endif
-
-    ! с какой стороны от стенки расчетная область?
-    if(i==1) then
-      isOwnRight = .true.                                       ! справа, если грань на левой стенке
-    else if(i==nxx) then
-      isOwnRight = .false.
-    else
-      isOwnRight = (c_type(i,j)>=0)
-    end if
-
-    if(isOwnRight) then                                         ! живая ячейка справа
-
-      ! вычисляем Мах на грани:
-      soundr = sqrt(g * cs_h0(i,j))
-      sound = soundr
-      uf = cs_u0(i,j)
-      M = uf / sound                                            ! Мах на грани
-
-      if(abs(M)>0.9) then
-        write(*,*) "ERROR in Phase2X: |M|>1. side (i,j):", i, j
-        call avost
-      endif
-
-      ! инвариант Q:
-      call TransportInvX(T_INVQ, i, j, k, DIRM, invQ)            ! перенос через правую ячейку влево
-      Gq = -cs_G0(ir,j)
-
-      ! инварианты U и T:
-      if(M<-eps) then
-        call TransportInvX(T_INVU, i, j, k, DIRM, invU)        ! перенос через правую ячейку влево
-        call TransportInvX(T_INVD, i, j, k, DIRM, invD)
-      else
-        invU = GetCellInvX(T_INVU, i, j, k, .true.)                ! .. вычисляем инвариант в центре ячейки
-        invD = GetCellInvX(T_INVD, i, j, k, .true.)
-      end if
-
-      ! восстанавливаем значения из инвариантов:
-      fxn_rho0(i,j) = invD
-      fxn_v0(i,j) = invU
-
-      ! u = 0
-      ! invQ = 0 + Gq * h
-      !----------------------------------
-      ! u = 0
-      ! h = invQ / Gq
-
-      fxn_h0(i,j) = invQ / Gq
-      fxn_u0(i,j) = 0.
-
-    else    ! if(c_type(i,j)>=0)                                ! живая ячейка слева, стенка справа
-
-      ! вычисляем число Маха на грани:
-      il = i - 1
-      sound = sqrt(g * cs_h0(il,j))
-      uf = cs_u0(il,j)                                          ! скорость на грани
-      M = uf / sound                                            ! Мах на грани
-
-      if(abs(M)>0.9) then
-        write(*,*) "ERROR in Phase2X: |M|>1. side (i,j):", i, j
-        call avost
-      endif
-
-      ! инвариант R:
-      call TransportInvX(T_INVR, i, j, k, DIRP, invR)          ! перенос через левую ячейку вправо
-      Gr = cs_G0(il,j)
-
-      ! инварианты U и T:
-      if(M>eps) then                                            ! течение на стенку   >O|
-        call TransportInvX(T_INVU, i, j, k, DIRP, invU)        ! .. перенос вправо
-        call TransportInvX(T_INVD, i, j, k, DIRP, invD)
-      else                                                      ! течение от стенки   <O|
-        invU = GetCellInvX(T_INVU, il, j, k, .true.)               ! .. вычисляем инвариант в центре ячейки
-        invD = GetCellInvX(T_INVD, il, j, k, .true.)
-      end if
-
-      ! восстанавливаем значения из инвариантов:
-      fxn_rho0(i,j) = invD
-      fxn_v0(i,j) = invU
-
-      ! u = 0
-      ! invR = 0 + Gr * h
-      !----------------------------------
-      ! u = 0
-      ! h = invR / Gr
-
-      fxn_h0(i,j) = invR / Gr
-      fxn_u0(i,j) = 0.
-
-    end if  ! if(c_type(i,j)>=0)
-
-    ! перенос dH:
-
-    ! скорость на грани:
-    uf = fx_u0(i,j) + fx_du(i,j,1)                      ! X-скорость на поверхности
-    M = uf / cs_sound                                 ! число Маха для переноса инвариантов
-
-    if(abs(M)>0.9) then
-      write(*,*) "ERROR in CalcH_X: |M|>1. side (i,j):", i, j
-      call avost
-    endif
-
-    ! перенос H:
-    if(M>eps) then
-      call TransportHX(i, j, DIRP, invH)                   ! перенос через левую ячейку вправо
-    else if(M<-eps) then
-      call TransportHX(i, j, DIRM, invH)                   ! перенос через правую ячейку влево
-    else
-      H0l = c_b(il,j) + cs_h0(il,j)                        ! поверхность МВ в ячейке слева
-      H0r = c_b(ir,j) + cs_h0(ir,j)                        ! поверхность МВ в ячейке справа
-      Hl = fzs(il,j)                                       ! реальная поверхность в ячейке слева
-      Hr = fzs(ir,j)                                       ! реальная поверхность в ячейке справа
-      invH = ((Hl-H0l) + (Hr-H0r)) / 2.
-    end if
-
-    fxn_dH(i,j) = invH
-
-  end do  ! do is
-
-  !. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
-
-  ! ГУ "стенка с прилипанием":
-  ns = nfx_sides(BC_STICK)                                      ! количество граней
-  do is=1, ns
-    i = fx_sides(BC_STICK).ptr(is).i                            ! индексы грани на сетке
-    j = fx_sides(BC_STICK).ptr(is).j
-
-    if(IsDebSideX(i, j, -1)) then
-      debdum = 0
-    endif
-
-    ! с какой стороны от стенки расчетная область?
-    if(i==1) then
-      isOwnRight = .true.                                       ! справа, если грань на левой стенке
-    else if(i==nxx) then
-      isOwnRight = .false.
-    else
-      isOwnRight = (c_type(i,j)>=0)
-    end if
-
-    if(isOwnRight) then                                         ! живая ячейка справа
-
-      ! вычисляем Мах на грани:
-      soundr = sqrt(g * cs_h0(i,j))
-      sound = soundr
-      uf = cs_u0(i,j)
-      M = uf / sound                                            ! Мах на грани
-
-      if(abs(M)>0.9) then
-        write(*,*) "ERROR in Phase2X: |M|>1. side (i,j):", i, j
-        call avost
-      endif
-
-      ! инвариант Q:
-      call TransportInvX(T_INVQ, i, j, k, DIRM, invQ)          ! перенос через правую ячейку влево
-      Gq = -cs_G0(ir, j)
-
-      ! инвариант D:
-      if(M<-eps) then                                           ! течение на стенку
-        call TransportInvX(T_INVD, i, j, k, DIRM, invD)        ! .. перенос инварианта чараз ячейку
-      else                                                      ! течение от стенки
-        invD = GetCellInvX(T_INVD, i, j, k, .true.)                ! .. вычисляем инвариант в центре ячейки
-      end if
-
-      ! восстанавливаем значения из инвариантов:
-      fxn_rho0(i,j) = invD
-      fxn_v0(i,j) = 0.
-
-      ! u = 0
-      ! invQ = 0 + Gq * h
-      !----------------------------------
-      ! u = 0
-      ! h = invQ / Gq
-
-      fxn_h0(i,j) = invQ / Gq
-      fxn_u0(i,j) = 0.
-
-    else    ! if(c_type(i,j)>=0)                                ! живая ячейка слева, стенка справа
-
-      ! вычисляем число Маха на грани:
-      il = i - 1
-      sound = sqrt(g * cs_h0(il,j))
-      uf = cs_u0(il,j)                                         ! скорость на грани
-      M = uf / sound                                            ! Мах на грани
-
-      if(abs(M)>0.9) then
-        write(*,*) "ERROR in Phase2X: |M|>1. side (i,j):", i, j
-        call avost
-      endif
-
-      ! инвариант R:
-      call TransportInvX(T_INVR, i, j, DIRP, k, invR)          ! перенос через левую ячейку вправо
-      Gr = cs_G0(il, j)
-
-      ! инвариант D:
-      if(M>eps) then                                            ! течение на стенку
-        call TransportInvX(T_INVD, i, j, DIRP, k, invD)        ! .. перенос инварианта чараз ячейку
-      else                                                      ! течение от стенки
-        invD = GetCellInvX(T_INVD, il, j, k, .true.)                ! .. вычисляем инвариант в центре ячейки
-      end if
-
-      ! восстанавливаем значения из инвариантов:
-      fxn_rho0(i,j) = invD
-      fxn_v0(i,j) = 0.
-
-      ! u = 0
-      ! invR = 0 + Gr * h
-      !----------------------------------
-      ! u = 0
-      ! h = invR / Gr
-
-      fxn_h0(i,j) = invR / Gr
-      fxn_u0(i,j) = 0.
-
-    end if  ! if(c_type(i,j)>=0)
-
-    ! перенос dH:
-
-    ! скорость на грани:
-    uf = fx_u0(i,j) + fx_du(i,j,1)                      ! X-скорость на поверхности
-    M = uf / cs_sound                                 ! число Маха для переноса инвариантов
-
-    if(abs(M)>0.9) then
-      write(*,*) "ERROR in CalcH_X: |M|>1. side (i,j):", i, j
-      call avost
-    endif
-
-    ! перенос H:
-    if(M>eps) then
-      call TransportHX(i, j, DIRP, invH)                   ! перенос через левую ячейку вправо
-    else if(M<-eps) then
-      call TransportHX(i, j, DIRM, invH)                   ! перенос через правую ячейку влево
-    else
-      H0l = c_b(il,j) + cs_h0(il,j)                        ! поверхность МВ в ячейке слева
-      H0r = c_b(ir,j) + cs_h0(ir,j)                        ! поверхность МВ в ячейке справа
-      Hl = fzs(il,j)                                       ! реальная поверхность в ячейке слева
-      Hr = fzs(ir,j)                                       ! реальная поверхность в ячейке справа
-      invH = ((Hl-H0l) + (Hr-H0r)) / 2.
-    end if
-
-    fxn_dH(i,j) = invH
-
-    call BuildFluxesX(i,j,k)                                    ! построение потоков на грани
-
-  end do  ! do is
-
-  !. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
-
-  ! ГУ "постоянный вток":
-  ns = nfx_sides(BC_IN)                                         ! количество граней
-  do is=1, ns
-    i = fx_sides(BC_IN).ptr(is).i                               ! индексы грани на сетке
-    j = fx_sides(BC_IN).ptr(is).j
-    il = i - 1
-    ir = i
-
-    call assertn(.false., "Phase2_X. Не реализовано BC_IN", -1, -1, -1)
-
-    call BuildFluxesX(i,j,k)                                    ! построение потоков на грани
-
-  end do  ! do is
-
-  !. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
-
-  ! ГУ "переменный вток":
-  ns = nfx_sides(BC_IN_T)                                       ! количество граней
-  do is=1, ns
-    i = fx_sides(BC_IN_T).ptr(is).i                             ! индексы грани на сетке
-    j = fx_sides(BC_IN_T).ptr(is).j
-    il = i - 1
-    ir = i
-    call assertn(.false., "Phase2_X. Не реализовано BC_IN_T", -1, -1, -1)
-
-    call BuildFluxesX(i,j,k)                                    ! построение потоков на грани
-
-  end do  ! do is
-#endif
+  call fx_BndPeriodic                                           ! периодические ГУ
+  call fx_BndSlide                                              ! ГУ "стенка с проскальзыванием"
+  call fx_BndStick                                              ! ГУ "стенка с прилипанием"
+  call fx_BndInoutFix                                           ! ГУ "постоянный вток"
+  call fx_BndInoutVar                                           ! ГУ "переменный вток"
+  call fx_BndFixU                                               ! ГУ "фиксированная скорость"
 
 end subroutine Phase2X
 
@@ -620,103 +237,12 @@ subroutine Phase2Y
 
   !.. граничные условия ...................................................................
 
-  ! периодические ГУ:
-  ns = nfy_sides(BC_PERIODIC)                                   ! количество граней
-  do is=1, ns
-    i = fy_sides(BC_PERIODIC).ptr(is).i                         ! индексы грани на сетке
-    j = fy_sides(BC_PERIODIC).ptr(is).j
-    call assertn(j==1 .or. j==nyy, "Phase2-Y, периодические ГУ", i,j,-1)
-
-    if(j/=1) cycle                                              ! только для левой границы
-
-    if(IsDebSideY(i, j, -1)) then
-      write(17,"(/'Phase 2-Y',2(';',i0),';;periodic')") i, j
-    endif
-
-    jl = ncy                                                    ! ячейка слева (крайняя правая)
-    jr = 1                                                      ! ячейка справа
-
-    isFirstOut = .true.
-    do k=1, ncz
-
-      ! скорость на грани:
-      !uf = fy_v0(i,j) + fy_dv(i,j,k)                    ! скорость на грани
-      ul = cs_v(i,jl,k)
-      ur = cs_v(i,jr,k)
-      uf=(ul + ur) / 2.
-      M = uf / cs_sound
-
-      if(abs(M)>0.9) then
-        write(*,*) "ERROR in Phase2Y: |M|>1. side (i,j,k):", i, j, k
-        call avost
-      endif
-
-      ! инвариант R:
-      call TransportInvY(T_INVR, i, nyy, k, DIRP, invR)        ! перенос через левую ячейку вправо
-      Gr = cs_G(i,jl,k)
-
-      ! инвариант Q:
-      call TransportInvY(T_INVQ, i, 1, k, DIRM, invQ)          ! перенос через правую ячейку влево
-      Gq = -cs_G(i,jr,k)
-
-      ! инварианты U и D:
-      if(M>eps) then
-        call TransportInvY(T_INVU, i, nyy, k, DIRP, invU)        ! перенос через левую ячейку вправо
-        call TransportInvY(T_INVW, i, nyy, k, DIRP, invW)      ! перенос через левую ячейку вправо
-        call TransportInvY(T_INVD, i, nyy, k, DIRP, invD)        ! перенос через левую ячейку вправо
-      else if(M<-eps) then
-        call TransportInvY(T_INVU, i, 1, k, DIRM, invU)          ! перенос через правую ячейку влево
-        call TransportInvY(T_INVW, i, 1, k, DIRM, invW)      ! перенос через правую ячейку влево
-        call TransportInvY(T_INVD, i, 1, k, DIRM, invD)          ! перенос через правую ячейку влево
-      else
-        invU = (cs_du(i,jl,k) + cs_du(i,jr,k)) / 2.
-        invW = (cs_dw(i,jl,k) + cs_dw(i,jr,k)) / 2.
-        invD = (cs_drho(i,jl,k) + cs_drho(i,jr,k)) / 2.
-      end if
-
-      ! восстанавливаем значения из инвариантов:
-      drhoi = invD                                        ! дельта плотности
-      dui = invU                                          ! дельта тангенцальной скорости
-      dwi = invW                                          ! дельта вертикальной скорости
-
-      ! invR = du + Gr * dteta
-      ! invQ = du + Gq * dteta
-      !----------------------------------
-      ! invR - invQ = (Gr - Gq) * dteta
-      ! invR*Gq - invQ*Gr = (Gq - Gr) * du
-
-      dtetai = (invR - invQ) / (Gr - Gq)                  ! дельта псевдоплотности
-      dvi = (invR*Gq - invQ*Gr) / (Gq - Gr)               ! дельта нормальной скорости
-
-      !w0i = fyn_GetW0(i,j,k)
-
-      fyn_dteta(i,1,k) = dtetai
-      fyn_du(i,1,k) = dui
-      fyn_dv(i,1,k) = dvi                            ! тангенцальная скорость
-      fyn_dw(i,1,k) = dwi                            ! вертикальная скорость
-      fyn_drho(i,1,k) = drhoi                ! плотность
-
-      fyn_dteta(i,nyy,k) = fyn_dteta(i,1,k)
-      fyn_du(i,nyy,k) = fyn_du(i,1,k)
-      fyn_dv(i,nyy,k) = fyn_dv(i,1,k)
-      fyn_dw(i,nyy,k) = fyn_dw(i,1,k)
-      fyn_drho(i,nyy,k) = fyn_drho(i,1,k)
-
-      if(IsDebSideY(i, j, k)) then
-        if(isFirstOut) &
-          write(17,"(a)") ";i;j;k;teta;rho;u;v;w;InvR;InvQ;InvU;InvW;InvD;Gr;Gq"
-        write(17,"('side:',3(';',i0),100(';',1p,g0.16))") &
-            i, j, k, &
-              teta0+fy_dteta(i,j,k), rho0+fy_drho(i,j,k), fy_u0(i,j)+fy_du(i,j,k), fy_v0(i,j)+fy_dv(i,j,k), fy_w0(i,j,k)+fy_dw(i,j,k), &
-              invR, invQ, invU, invW, invD, Gr, Gq
-        write(17,"('UFN:;;;',100(';',1p,g0.16))") &
-              teta0+fyn_dteta(i,j,k), rho0+fyn_drho(i,j,k), fyn_u0(i,j)+fyn_du(i,j,k), fyn_v0(i,j)+fyn_dv(i,j,k), fyn_w0(i,j,k)+fyn_dw(i,j,k)
-        isFirstOut = .false.
-      end if
-
-    end do   ! do k
-
-  end do  ! do is
+  call fy_BndPeriodic                                           ! периодические ГУ
+  call fy_BndSlide                                              ! ГУ "стенка с проскальзыванием"
+  call fy_BndStick                                              ! ГУ "стенка с прилипанием"
+  call fy_BndInoutFix                                           ! ГУ "постоянный вток"
+  call fy_BndInoutVar                                           ! ГУ "переменный вток"
+  call fy_BndFixU                                               ! ГУ "фиксированная скорость"
 
 end
 
@@ -957,25 +483,27 @@ subroutine Phase2Z_top
   use variables
   implicit none
 
-  integer:: i, j, k, il, ir, jl, jr, nc, ic
+  integer:: i, j, k, il, ir, jl, jr, nc, ic, ibc
   real(R8):: z0, zp, Gr, QQ, uxl, uxr, vyl, vyr, uc, vc, uf, M, H0l, H0r, Hl, Hr, w0, dzdx, dzdy, dwdz
   real(R8):: invR, invH
+  logical:: isOwnRight
 
   !-- построение z-сетки на X-гранях: ---------------------------------------
 
   ! перенос dH:
   do i=1,nxx
     do j=1,nxy
-      if(fx_type(i,j)<0) cycle            ! пропускаем не рабочие грани
-      select case(fx_type(i,j))           ! в зависимости от типа ГУ
+      if(fx_type(i,j)<0) cycle                                  ! пропускаем не рабочие грани
+      select case(fx_type(i,j))                                 ! в зависимости от типа ГУ
 
-        case(BC_INNER)
+        case(BC_INNER) !.. внутренние грани ....................................................
+
           il = i-1
           ir = i
           ! скорость на грани:
           !uf = fx_u0(i,j) + fx_du(i,j,1)                      ! X-скорость на поверхности
-          uf = (fzn_du(il,j,1)+cn_u0(il,j) + fzn_du(ir,j,1)+c_u0(ir,j)) / 2.
-          M = uf / cs_sound                                 ! число Маха для переноса инвариантов
+          uf = (fzn_du(il,j,1)+c_u0(il,j) + fzn_du(ir,j,1)+c_u0(ir,j)) / 2.
+          M = uf / cs_sound                                     ! число Маха для переноса инвариантов
 
           if(abs(M)>0.9) then
             write(*,*) "ERROR in CalcH_X: |M|>1. side (i,j):", i, j
@@ -984,25 +512,26 @@ subroutine Phase2Z_top
 
           ! перенос H:
           if(M>eps) then
-            call TransportHX(i, j, DIRP, invH)                   ! перенос через левую ячейку вправо
+            call TransportHX(i, j, DIRP, invH)                  ! перенос через левую ячейку вправо
           else if(M<-eps) then
-            call TransportHX(i, j, DIRM, invH)                   ! перенос через правую ячейку влево
+            call TransportHX(i, j, DIRM, invH)                  ! перенос через правую ячейку влево
           else
-            H0l = c_b(il,j) + cs_h0(il,j)                        ! поверхность МВ в ячейке слева
-            H0r = c_b(ir,j) + cs_h0(ir,j)                        ! поверхность МВ в ячейке справа
-            Hl = fzs_z(il,j,1)                                   ! реальная поверхность в ячейке слева
-            Hr = fzs_z(ir,j,1)                                   ! реальная поверхность в ячейке справа
+            H0l = c_b(il,j) + cs_h0(il,j)                       ! поверхность МВ в ячейке слева
+            H0r = c_b(ir,j) + cs_h0(ir,j)                       ! поверхность МВ в ячейке справа
+            Hl = fzs_z(il,j,1)                                  ! реальная поверхность в ячейке слева
+            Hr = fzs_z(ir,j,1)                                  ! реальная поверхность в ячейке справа
             invH = ((Hl-H0l) + (Hr-H0r)) / 2.
           end if
           fxn_dH(i,j) = invH
 
-        case(BC_PERIODIC)
-          if(i/=1) cycle                                              ! только для левой границы
-          il = ncx                                                    ! ячейка слева (крайняя правая)
-          ir = 1                                                      ! ячейка справа
+        case(BC_PERIODIC) !.. периодические ГУ ...........................................................
+
+          if(i/=1) cycle                                        ! только для левой границы
+          il = ncx                                              ! ячейка слева (крайняя правая)
+          ir = 1                                                ! ячейка справа
           ! скорость на грани:
-          uf = fx_u0(i,j) + fx_du(i,j,1)                      ! X-скорость на поверхности
-          M = uf / cs_sound                                 ! число Маха для переноса инвариантов
+          uf = fx_u0(i,j) + fx_du(i,j,1)                        ! X-скорость на поверхности
+          M = uf / cs_sound                                     ! число Маха для переноса инвариантов
 
           if(abs(M)>0.9) then
             write(*,*) "ERROR in CalcH_X: |M|>1. side (i,j):", i, j
@@ -1011,18 +540,109 @@ subroutine Phase2Z_top
 
           ! перенос H:
           if(M>eps) then
-            call TransportHX(nxx, j, DIRP, invH)                   ! перенос через левую ячейку вправо
+            call TransportHX(nxx, j, DIRP, invH)                ! перенос через левую ячейку вправо
           else if(M<-eps) then
-            call TransportHX(1, j, DIRM, invH)                   ! перенос через правую ячейку влево
+            call TransportHX(1, j, DIRM, invH)                  ! перенос через правую ячейку влево
           else
-            H0l = c_b(il,j) + cs_h0(il,j)                        ! поверхность МВ в ячейке слева
-            H0r = c_b(ir,j) + cs_h0(ir,j)                        ! поверхность МВ в ячейке справа
-            Hl = fzs_z(il,j,1)                                       ! реальная поверхность в ячейке слева
-            Hr = fzs_z(ir,j,1)                                       ! реальная поверхность в ячейке справа
+            H0l = c_b(il,j) + cs_h0(il,j)                       ! поверхность МВ в ячейке слева
+            H0r = c_b(ir,j) + cs_h0(ir,j)                       ! поверхность МВ в ячейке справа
+            Hl = fzs_z(il,j,1)                                  ! реальная поверхность в ячейке слева
+            Hr = fzs_z(ir,j,1)                                  ! реальная поверхность в ячейке справа
             invH = ((Hl-H0l) + (Hr-H0r)) / 2.
           end if
           fxn_dH(1,j) = invH
           fxn_dH(nxx,j) = invH
+
+        case(BC_STICK) !.. стена с прилипанием ...................................................................
+
+          il = i-1
+          ir = i
+
+          ! скорость на грани:
+          if(isOwnRight) then                                   ! ячейка справа
+            uf = fzn_du(ir,j,1)+c_u0(ir,j)
+          else
+            uf = fzn_du(il,j,1)+c_u0(il,j)
+          end if
+          M = uf / cs_sound                                     ! число Маха для переноса инвариантов
+
+          if(isOwnRight) then                                   ! ячейка справа                         | O
+
+            if(M<-eps) then                                     ! течение справа налево (через ячейку)  |<O-
+              call TransportHX(i, j, DIRM, invH)                ! перенос через правую ячейку влево
+            else
+              H0r = c_b(ir,j) + cs_h0(ir,j)                     ! поверхность МВ в ячейке справа
+              Hr = fzs_z(ir,j,1)                                ! реальная поверхность в ячейке справа
+              invH = Hr - H0r
+            end if
+
+          else                                                  ! ячейка слева                           O |
+
+            if(M>eps) then                                      ! течение слева направо (через ячейку)  -O>|
+              call TransportHX(i, j, DIRP, invH)                ! перенос через левую ячейку вправо
+            else
+              H0l = c_b(il,j) + cs_h0(il,j)                     ! поверхность МВ в ячейке слева
+              Hl = fzs_z(il,j,1)                                ! реальная поверхность в ячейке слева
+              invH = Hl - H0l
+            end if
+
+          end if
+
+          fxn_dH(i,j) = invH
+
+        case(BC_IN_T) !.. вход, переменный по времени ...........................................................
+
+          il = i-1
+          ir = i
+
+          ibc = fx_bc(i,j)
+          isOwnRight = fx_IsOwnRight(i,j)
+
+          ! скорость на грани:
+          if(isOwnRight) then                                   ! ячейка справа
+            uf = (bcData(ibc).u + fzn_du(ir,j,1)+c_u0(ir,j)) / 2.
+          else
+            uf = (fzn_du(il,j,1)+c_u0(il,j) + bcData(ibc).u) / 2.
+          end if
+          M = uf / cs_sound                                     ! число Маха для переноса инвариантов
+
+          if(abs(M)>0.9) then
+            write(*,*) "ERROR in CalcH_X: |M|>1. side (i,j):", i, j
+            call avost
+          endif
+
+          ! перенос H:
+          if(isOwnRight) then                                   ! ячейка справа
+
+            if(M>eps) then                                      ! течение слева направо (от границы)
+              invH = 0.
+            else if(M<-eps) then                                ! течение справа налево (через ячейку)
+              call TransportHX(i, j, DIRM, invH)                ! перенос через правую ячейку влево
+            else
+              H0r = c_b(ir,j) + cs_h0(ir,j)                     ! поверхность МВ в ячейке справа
+              Hr = fzs_z(ir,j,1)                                ! реальная поверхность в ячейке справа
+              invH = (0. + (Hr-H0r)) / 2.
+            end if
+
+          else                                                  ! ячейка слева
+
+            if(M>eps) then                                      ! течение слева направо (через ячейку)
+              call TransportHX(i, j, DIRP, invH)                ! перенос через левую ячейку вправо
+            else if(M<-eps) then                                ! течение справа налево (от границы)
+              invH = 0.
+            else
+              H0l = c_b(il,j) + cs_h0(il,j)                     ! поверхность МВ в ячейке слева
+              Hl = fzs_z(il,j,1)                                ! реальная поверхность в ячейке слева
+              invH = ((Hl-H0l) + 0.) / 2.
+            end if
+
+          end if
+
+          fxn_dH(i,j) = invH
+
+        case default !.. неизвестный тип ГУ ..........................................................
+
+          call avost("Не рализовано. "//__FILE__, __LINE__)
 
       end select
     end do
@@ -1030,7 +650,7 @@ subroutine Phase2Z_top
 
   do i=1,nxx
     do j=1,nxy
-      if(fx_type(i,j)<0) cycle            ! пропускаем не рабочие грани
+      if(fx_type(i,j)<0) cycle                                  ! пропускаем не рабочие грани
       ! Выше на каждой рабочей грани вычислен уровень поверхности.
       ! Определяем z-координаты разделов между слоями
       z0 = fxn_z0(i,j) + fxn_dH(i,j)        ! реальная поверхность
@@ -1041,7 +661,7 @@ subroutine Phase2Z_top
 
       ! после построения сетки можно вычислить абсолютные значения потоковых переменных:
       do k=1,ncz
-        fxn_w0(i,j,k) = fxn_GetW0(i,j,k)              ! Вертикальная скорость МВ на X-гранях
+        fxn_w0(i,j,k) = fxn_GetW0(i,j,k)                        ! Вертикальная скорость МВ на X-гранях
         fxn_teta(i,j,k) = teta0       + fxn_dteta(i,j,k)
         fxn_rho(i,j,k)  = rho0        + fxn_drho(i,j,k)
         fxn_u(i,j,k)    = fxn_u0(i,j) + fxn_du(i,j,k)
@@ -1068,15 +688,15 @@ subroutine Phase2Z_top
   ! перенос dH:
   do i=1,nyx
     do j=1,nyy
-      if(fy_type(i,j)<0) cycle            ! пропускаем не рабочие грани
-      select case(fy_type(i,j))           ! в зависимости от типа ГУ
+      if(fy_type(i,j)<0) cycle                                  ! пропускаем не рабочие грани
+      select case(fy_type(i,j))                                 ! в зависимости от типа ГУ
 
-        case(BC_INNER)
+        case(BC_INNER) !.. внутренние грани ....................................................
           jl = j-1
           jr = j
           ! скорость на грани:
-          uf = fy_v0(i,j) + fy_dv(i,j,1)                      ! Y-скорость на поверхности
-          M = uf / cs_sound                                 ! число Маха для переноса инвариантов
+          uf = fy_v0(i,j) + fy_dv(i,j,1)                        ! Y-скорость на поверхности
+          M = uf / cs_sound                                     ! число Маха для переноса инвариантов
 
           if(abs(M)>0.9) then
             write(*,*) "ERROR in CalcH_Y (inner): |M|>1. side (i,j):", i, j
@@ -1085,26 +705,26 @@ subroutine Phase2Z_top
 
           ! перенос H:
           if(M>eps) then
-            call TransportHY(i, j, DIRP, invH)                   ! перенос через левую ячейку вправо
+            call TransportHY(i, j, DIRP, invH)                  ! перенос через левую ячейку вправо
           else if(M<-eps) then
-            call TransportHY(i, j, DIRM, invH)                   ! перенос через правую ячейку влево
+            call TransportHY(i, j, DIRM, invH)                  ! перенос через правую ячейку влево
           else
-            H0l = c_b(i,jl) + cs_h0(i,jl)                        ! поверхность МВ в ячейке слева
-            H0r = c_b(i,jr) + cs_h0(i,jr)                        ! поверхность МВ в ячейке справа
-            Hl = fzs_z(i,jr,1)                                       ! реальная поверхность в ячейке слева
-            Hr = fzs_z(i,jr,1)                                       ! реальная поверхность в ячейке справа
+            H0l = c_b(i,jl) + cs_h0(i,jl)                       ! поверхность МВ в ячейке слева
+            H0r = c_b(i,jr) + cs_h0(i,jr)                       ! поверхность МВ в ячейке справа
+            Hl = fzs_z(i,jr,1)                                  ! реальная поверхность в ячейке слева
+            Hr = fzs_z(i,jr,1)                                  ! реальная поверхность в ячейке справа
             invH = ((Hl-H0l) + (Hr-H0r)) / 2.
           end if
 
           fyn_dH(i,j) = invH
 
-        case(BC_PERIODIC)
-          if(j/=1) cycle                                              ! только для левой границы
-          jl = ncy                                                    ! ячейка слева (крайняя правая)
-          jr = 1                                                      ! ячейка справа
+        case(BC_PERIODIC) !.. периодические ГУ ...........................................................
+          if(j/=1) cycle                                        ! только для левой границы
+          jl = ncy                                              ! ячейка слева (крайняя правая)
+          jr = 1                                                ! ячейка справа
           ! скорость на грани:
-          uf = fy_v0(i,j) + fy_dv(i,j,1)                      ! Y-скорость на поверхности
-          M = uf / cs_sound                                 ! число Маха для переноса инвариантов
+          uf = fy_v0(i,j) + fy_dv(i,j,1)                        ! Y-скорость на поверхности
+          M = uf / cs_sound                                     ! число Маха для переноса инвариантов
 
           if(abs(M)>0.9) then
             write(*,*) "ERROR in CalcH_Y (periodic): |M|>1. side (i,j):", i, j
@@ -1113,19 +733,109 @@ subroutine Phase2Z_top
 
           ! перенос H:
           if(M>eps) then
-            call TransportHY(i, nyy, DIRP, invH)                   ! перенос через левую ячейку вправо
+            call TransportHY(i, nyy, DIRP, invH)                ! перенос через левую ячейку вправо
           else if(M<-eps) then
-            call TransportHY(i, 1, DIRM, invH)                   ! перенос через правую ячейку влево
+            call TransportHY(i, 1, DIRM, invH)                  ! перенос через правую ячейку влево
           else
-            H0l = c_b(i,jl) + cs_h0(i,jl)                        ! поверхность МВ в ячейке слева
-            H0r = c_b(i,jr) + cs_h0(i,jr)                        ! поверхность МВ в ячейке справа
-            Hl = fzs_z(i,jr,1)                                       ! реальная поверхность в ячейке слева
-            Hr = fzs_z(i,jr,1)                                       ! реальная поверхность в ячейке справа
+            H0l = c_b(i,jl) + cs_h0(i,jl)                       ! поверхность МВ в ячейке слева
+            H0r = c_b(i,jr) + cs_h0(i,jr)                       ! поверхность МВ в ячейке справа
+            Hl = fzs_z(i,jr,1)                                  ! реальная поверхность в ячейке слева
+            Hr = fzs_z(i,jr,1)                                  ! реальная поверхность в ячейке справа
             invH = ((Hl-H0l) + (Hr-H0r)) / 2.
           end if
 
           fyn_dH(i,j) = invH
           fyn_dH(i,nyy) = invH
+
+        case(BC_STICK) !.. стена с прилипанием ...................................................................
+
+          jl = j-1
+          jr = j
+
+          ! скорость на грани:
+          if(isOwnRight) then                                   ! ячейка справа
+            uf = fzn_dv(i,jr,1)+c_v0(i,jr)
+          else
+            uf = fzn_dv(i,jl,1)+c_v0(i,jl)
+          end if
+          M = uf / cs_sound                                     ! число Маха для переноса инвариантов
+
+          if(isOwnRight) then                                   ! ячейка справа                         | O
+
+            if(M<-eps) then                                     ! течение справа налево (через ячейку)  |<O-
+              call TransportHY(i, j, DIRM, invH)                ! перенос через правую ячейку влево
+            else
+              H0r = c_b(i,jr) + cs_h0(i,jr)                     ! поверхность МВ в ячейке справа
+              Hr = fzs_z(i,jr,1)                                ! реальная поверхность в ячейке справа
+              invH = Hr - H0r
+            end if
+
+          else                                                  ! ячейка слева                           O |
+
+            if(M>eps) then                                      ! течение слева направо (через ячейку)  -O>|
+              call TransportHY(i, j, DIRP, invH)                ! перенос через левую ячейку вправо
+            else
+              H0l = c_b(i,jl) + cs_h0(i,jl)                     ! поверхность МВ в ячейке слева
+              Hl = fzs_z(i,jl,1)                                ! реальная поверхность в ячейке слева
+              invH = Hl - H0l
+            end if
+
+          end if
+
+          fyn_dH(i,j) = invH
+
+        case(BC_IN_T) !.. вход, переменный по времени ...........................................................
+          jl = j-1
+          jr = j
+
+          ibc = fy_bc(i,j)
+          isOwnRight = fy_IsOwnRight(i,j)
+
+          ! скорость на грани:
+          if(isOwnRight) then                                   ! ячейка справа
+            uf = (bcData(ibc).v + fzn_dv(i,jr,1)+c_v0(i,jr)) / 2.
+          else
+            uf = (fzn_dv(i,jl,1)+c_v0(i,jl) + bcData(ibc).v) / 2.
+          end if
+          M = uf / cs_sound                                     ! число Маха для переноса инвариантов
+
+          if(abs(M)>0.9) then
+            write(*,*) "ERROR in CalcH_Y: |M|>1. side (i,j):", i, j
+            call avost
+          endif
+
+          ! перенос H:
+          if(isOwnRight) then                                   ! ячейка справа
+
+            if(M>eps) then                                      ! течение слева направо (от границы)
+              invH = 0.
+            else if(M<-eps) then                                ! течение справа налево (через ячейку)
+              call TransportHY(i, j, DIRM, invH)                ! перенос через правую ячейку влево
+            else
+              H0r = c_b(i,jr) + cs_h0(i,jr)                     ! поверхность МВ в ячейке справа
+              Hr = fzs_z(i,jr,1)                                ! реальная поверхность в ячейке справа
+              invH = (0. + (Hr-H0r)) / 2.
+            end if
+
+          else                                                  ! ячейка слева
+
+            if(M>eps) then                                      ! течение слева направо (через ячейку)
+              call TransportHY(i, j, DIRP, invH)                ! перенос через левую ячейку вправо
+            else if(M<-eps) then                                ! течение справа налево (от границы)
+              invH = 0.
+            else
+              H0l = c_b(i,jl) + cs_h0(i,jl)                     ! поверхность МВ в ячейке слева
+              Hl = fzs_z(i,jl,1)                                ! реальная поверхность в ячейке слева
+              invH = ((Hl-H0l) + 0.) / 2.
+            end if
+
+          end if
+
+          fyn_dH(i,j) = invH
+
+        case default !.. неизвестный тип ГУ ..........................................................
+
+          call avost("Не рализовано. "//__FILE__, __LINE__)
 
       end select
     end do
@@ -1133,10 +843,10 @@ subroutine Phase2Z_top
 
   do i=1,nyx
     do j=1,nyy
-      if(fy_type(i,j)<0) cycle            ! пропускаем не рабочие грани
+      if(fy_type(i,j)<0) cycle                                  ! пропускаем не рабочие грани
       ! Выше на каждой рабочей грани вычислен уровень поверхности.
       ! Определяем z-координаты разделов между слоями
-      z0 = fyn_z0(i,j) + fyn_dH(i,j)        ! реальная поверхность
+      z0 = fyn_z0(i,j) + fyn_dH(i,j)                            ! реальная поверхность
       do k=1,nz-1
         fyn_z(i,j,k) = z0 - (k - 1.) * ((z0 - fy_b(i, j)) / (nz - 1.))
       end do
@@ -1144,7 +854,7 @@ subroutine Phase2Z_top
 
       ! после построения сетки можно вычислить абсолютные значения потоковых переменных:
       do k=1,ncz
-        fyn_w0(i,j,k) = fyn_GetW0(i,j,k)              ! Вертикальная скорость МВ на Y-гранях
+        fyn_w0(i,j,k) = fyn_GetW0(i,j,k)                        ! Вертикальная скорость МВ на Y-гранях
         fyn_teta(i,j,k) = teta0       + fyn_dteta(i,j,k)
         fyn_rho(i,j,k)  = rho0        + fyn_drho(i,j,k)
         fyn_u(i,j,k)    = fyn_u0(i,j) + fyn_du(i,j,k)
@@ -1169,7 +879,7 @@ subroutine Phase2Z_top
 
   !. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
 
-  nc = ncells                                                  ! количество рабочих ячеек
+  nc = ncells                                                   ! количество рабочих ячеек
   do ic=1, nc
     i = cells.ptr(ic).i                                         ! индексы ячеек на сетке
     j = cells.ptr(ic).j
@@ -1185,12 +895,12 @@ subroutine Phase2Z_top
     endif
 
     ! инвариант R (снизу вверх):
-    call TransportInvZ(T_INVR, i, j, k, DIRM, invR)              ! перенос через нижнюю ячейку вверх
+    call TransportInvZ(T_INVR, i, j, k, DIRM, invR)             ! перенос через нижнюю ячейку вверх
     Gr = cs_G(i,jl,k)
 
     QQ = rho0 * g / sound0_2
 
-    z0 = c_b(i,j) + cn_h0(i,j)                                ! уровень поверхности МВ t[n+1]
+    z0 = c_b(i,j) + cn_h0(i,j)                                  ! уровень поверхности МВ t[n+1]
     uxr = fxn_u0(ir,j) + fxn_du(ir,j,1)
     uxl = fxn_u0(il,j) + fxn_du(il,j,1)
     vyr = fyn_v0(i,jr) + fyn_dv(i,jr,1)
@@ -1224,11 +934,11 @@ subroutine Phase2Z_top
 
     ! после построения сетки можно вычислить абсолютные значения потоковых переменных:
     do k=1,nz
-      fzn_w0(i,j,k) = fzn_GetW0(i,j,k)              ! Вертикальная скорость МВ на Z-гранях
+      fzn_w0(i,j,k) = fzn_GetW0(i,j,k)                          ! Вертикальная скорость МВ на Z-гранях
       fzn_teta(i,j,k) = teta0       + fzn_dteta(i,j,k)
       fzn_w(i,j,k)    = fzn_w0(i,j,k) + fzn_dw(i,j,k)
       if(k/=nz) then
-        cn_w0(i,j,k) = cn_GetW0(i,j,k)              ! Вертикальная скорость МВ в слой-ячейках
+        cn_w0(i,j,k) = cn_GetW0(i,j,k)                          ! Вертикальная скорость МВ в слой-ячейках
       end if
     end do
 

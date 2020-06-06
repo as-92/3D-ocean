@@ -35,12 +35,12 @@ subroutine Init
   ! -12 Струя в периодической области с Кориолисом
   ! -13 Лабораторные тесты из статьи C. GLADSTONE "An experimental investigation of density-stratified inertial gravity currents"
 
-  ! -200 Белое море
+  ! 200 Белое море
 
   ! -998 тест мелой воды
   ! -999 тест мелой воды (вихрь)
 
-  test_numb = 9
+  taskNum = 200
 
   ! что печатать: 1 - печать, 0 - не печатать
   print_height = 1
@@ -69,18 +69,19 @@ subroutine Init
   nt = 0
   nprint = 0
 
-  select case (test_numb)
-    case ( 8);  call SetupTask_8          ! вихрь X-Y
-    case ( 9);  call SetupTask_9          ! вихревая пара X-Z
-    case (10);  call SetupTask_10         ! горбы
+  select case (taskNum)
+    case (  8);  call SetupTask_8          ! вихрь X-Y
+    case (  9);  call SetupTask_9          ! вихревая пара X-Z
+    case ( 10);  call SetupTask_10         ! горбы
+    case (200);  call SetupTask_200        ! Белое море
 
     case default
-      write(*,*) "Wrong test_numb"
+      write(*,*) "Wrong taskNum"
       stop
   end select
 
   write(*,"(4(a,i0),3(a,1p,g12.4))") &
-    "Test ",test_numb," cells: ",ncx,"x",ncy,"x",ncz,". Size: ",dl,"x",dw,". CFL=",cfl
+    "Test ",taskNum," cells: ",ncx,"x",ncy,"x",ncz,". Size: ",dl,"x",dw,". CFL=",cfl
 
   call dims   ! обезразмеривание
 
@@ -127,7 +128,7 @@ subroutine Init
     is = 1
     do i=1, nxx
       do j=1, nxy
-        if(fx_type(i,j)==k) then                       ! если грань нужного типа
+        if(fx_type(i,j)==k) then                        ! если грань нужного типа
           fx_sides(k).ptr(is).i = i                     ! заносим индексы грани в соответствующий список
           fx_sides(k).ptr(is).j = j
           is = is + 1
@@ -183,6 +184,9 @@ subroutine Init
 
   ! параметры на гранях, как полусумма значений в ячейках:
   do i=1,nxx; do j=1,nxy                                        ! для X-граней
+
+    if(fx_type(i,j)==BC_DELETED) cycle
+
     ccl = i - 1                                                 ! ячейка слева
     ccr = i                                                     ! ячейка справа
 
@@ -220,6 +224,9 @@ subroutine Init
   end do; end do
 
   do i=1,nyx; do j=1,nyy                                        ! для Y-граней
+
+    if(fy_type(i,j)==BC_DELETED) cycle
+
     ccl = j - 1                                                 ! ячейка слева
     ccr = j                                                     ! ячейка справа
 

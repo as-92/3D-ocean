@@ -4,11 +4,24 @@ end subroutine Gout
 
 !--------------------------------------------------------------------------------------------
 
+! вывод сетки и/или данных в формате tecplot
+!         сетка данные
+! mode=0:   +      -
+! mode=1:   -      +
+! mode=3:   +      +
+!subroutine TPoutPlt(mode)
 subroutine TPoutPlt
   use variables
   implicit none
+  integer:: mode
 
   include 'tecio.h'
+
+  interface
+    function GetNodeNum(i, j, k)
+      integer:: i,j,k,GetNodeNum
+    end function
+  end interface
 
   character(1) :: c0
   character(len=200) :: fname, buf
@@ -16,10 +29,10 @@ subroutine TPoutPlt
   real(4) :: data(nx * ny * nz)
   integer(4) :: ic, jc, js, is, iz, isr, isl, jsb, jsf, rc, cnt, ndata
   integer(4) :: i1, i2, i3, i4, i5, i6, i, j, k
-  ! переменные:                           x  y  z  u  v  w |u| h rho teta fz_z z0 rot id
-  integer(4) :: ValueLocation(14) =    (/ 1, 1, 1, 0, 0, 0, 0, 0, 0,   0,   0, 0,  0, 0 /)         ! 0: point, 1: cell
-  integer(4) :: PassiveVarList(14) =   (/ 0, 0, 0, 0, 0, 0, 0, 0, 0,   0,   0, 0,  0, 0 /)
-  integer(4) :: ShareVarFromZone(14) = (/ 0, 0, 0, 0, 0, 0, 0, 0, 0,   0,   0, 0,  0, 0 /)
+  ! переменные:                           x  y  z  u  v  w rho teta z0 rot id
+  integer(4) :: ValueLocation(11) =    (/ 1, 1, 1, 0, 0, 0, 0,   0, 0,  0, 0 /)         ! 0: point, 1: cell
+  integer(4) :: PassiveVarList(11) =   (/ 0, 0, 0, 0, 0, 0, 0,   0, 0,  0, 0 /)
+  integer(4) :: ShareVarFromZone(11) = (/ 0, 0, 0, 0, 0, 0, 0,   0, 0,  0, 0 /)
   ! integer(4) :: ValueLocation(4) = (/ 1, 1, 1, 0 /)         ! 0: point, 1: cell
   ! integer(4) :: PassiveVarList(4) = (/ 0, 0, 0, 0 /)
   ! integer(4) :: ShareVarFromZone(4) = (/ 0, 0, 0, 0 /)
@@ -31,8 +44,12 @@ subroutine TPoutPlt
   real(8) :: umx(nxx,nxy),umy(nyx,nyy)                                   ! средние по столбцу потоковые скорости
   real(8) :: Znode(nx, ny, nz)
   real(8) :: hb, dvdx, dudy, rot(ncx, ncy, ncz)
+  integer:: nnNodes, nnSides, nnCells, connectivityCount
+  integer, pointer:: connectivity(:)
+  real(4), pointer:: dataX(:), dataY(:), dataZ(:)
 
   c0 = char(0)                                                          ! терминальный 0 для c-strings
+
   ! высоты в узлах сетки
   do iz = nz, 1, -1
     do js = 2, ny-1
@@ -95,53 +112,6 @@ subroutine TPoutPlt
     end do
   end do
 
-  ! расчёт вертикальных компонент скоростей:
-#if 0
-  if(iout>0) then
-    do jc=1, ncy
-      jsb = jc
-      jsf = jc + 1
-      h_y = y(jsf) - y(jsb)
-      do ic=1, ncx
-        if(c_type(ic,jc)<=CELL_DELETED) cycle
-        isl = ic                                                            ! индекс левой грани
-        isr = ic + 1                                                        ! индекс правой грани
-        h_x = x(isr) - x(isl)
-        f(ic, jc, 1) = 0.
-        do iz=1, nz-1
-          hl = fx_z(isl, jc, iz) - fx_z(isl, jc, iz+1)
-          hr = fx_z(isr, jc, iz) - fx_z(isr, jc, iz+1)
-          hb = fy_z(ic, jsb, iz) - fy_z(ic, jsb, iz+1)
-          hf = fy_z(ic, jsf, iz) - fy_z(ic, jsf, iz+1)
-          f(ic, jc, iz+1) = f(ic, jc, iz) + &
-            (hr * (fx_du(isr, jc, iz) - umx(isr, jc)) - hl * (fx_du(isl, jc, iz) - umx(isl, jc))) / h_x + &
-            (hf * (fy_du(ic, jsf, iz) - umx(ic, jsf)) - hb * (fy_du(ic, jsb, iz) - umx(ic, jsb))) / h_y
-        end do
-        do iz=1, nz-1
-          ! вертикальная скорость:
-          zl = (fx_z(isl, jc, iz) + fx_z(isl, jc, iz+1)) / 2.
-          zr = (fx_z(isr, jc, iz) + fx_z(isr, jc, iz+1)) / 2.
-          zb = (fy_z(ic, jsb, iz) + fy_z(ic, jsb, iz+1)) / 2.
-          zf = (fy_z(ic, jsf, iz) + fy_z(ic, jsf, iz+1)) / 2.
-          zci = (cs_z(ic, jc, iz) + cs_z(ic, jc, iz+1)) / 2.
-          zcni = (fz_z(ic, jc, iz) + fz_z(ic, jc, iz+1)) / 2.
-          uci = cs_du(ic, jc, iz)
-          ucni = c_du(ic, jc, iz)
-          fT = f(ic, jc, iz)
-          fB = f(ic, jc, iz+1)
-
-          w(ic, jc, iz) = (zcni - zci) / (dt/2.) + &
-                (uci + ucni) / 2. * (zr - zl) / h_x + &
-                (uci + ucni) / 2. * (zf - zb) / h_y + &!!! перепроверить!!!!
-                (fT + fB) / 2.
-        end do
-      end do
-    end do
-  else
-    w = 0.
-  end if
-#endif
-
   ! ротор скорости:
   do jc=1, ncy
     do ic=1, ncx
@@ -183,10 +153,10 @@ subroutine TPoutPlt
     call execute_command_line("rm -f ./out/*")
   end if
 
-  write(buf,"(a,i0,a)") "TITLE = ""TEST_NO: ", test_numb, """"
+  write(buf,"(a,i0,a)") "TITLE = ""TEST_NO: ", taskNum, """"
   rc = tecini142( &
           buf//c0, &                                                    ! заголовок
-          'x y z u v w absVel h rho teta fz_z z0 rot id'//c0, &                         ! переменные
+          'x y z u v w rho teta z0 rot id'//c0, &                         ! переменные
           fname//c0, &                                                  ! имя файла
           './out'//c0, &                                                ! scratch dir
           0, &                                                          ! формат файла: 0=.plt 1=.szplt
@@ -197,7 +167,7 @@ subroutine TPoutPlt
 
   ! общие параметры:
   if(iout==0) then
-    write(buf, "(i0,a)") test_numb, c0;   rc = tecauxstr142("task"//c0, buf)
+    write(buf, "(i0,a)") taskNum, c0;   rc = tecauxstr142("task"//c0, buf)
     write(buf, "(f4.2,a)") cfl, c0;       rc = tecauxstr142("cfl"//c0, buf)
     write(buf, "(i0,a)") nx, c0;          rc = tecauxstr142("nx"//c0, buf)
     write(buf, "(i0,a)") ny, c0;          rc = tecauxstr142("ny"//c0, buf)
@@ -213,15 +183,31 @@ subroutine TPoutPlt
 
   ! время:
   ti = GetCTime(ttime)
-  !if(test_numb==1) ti = ti / 3600. / 24.              ! сек -> дни
+  !if(taskNum==1) ti = ti / 3600. / 24.              ! сек -> дни
+
+  ! чиcло элементов:
+  nnNodes = nx * ny * nz
+
+  nnCells = 0
+  do i=1,ncx; do j=1,ncy
+    if(c_type(i,j)>CELL_DELETED) nnCells = nnCells + ncz
+  end do; end do
+
+  nnSides = 0
+  do i=1,nxx; do j=1,nxy
+    if(fx_type(i,j)>BC_DELETED) nnSides = nnSides + ncz
+  end do; end do
+  do i=1,nyx; do j=1,nyy
+    if(fy_type(i,j)>BC_DELETED) nnSides = nnSides + ncz
+  end do; end do
 
   write(buf,"(i0, a,i0)") iout, ". step ", istep
   rc = teczne142( &
           trim(buf)//c0, &      ! ZoneTitle, &
-          0, &                  ! ZoneType, &
-          nx, &                 ! IMxOrNumPts, &
-          ny, &                 ! JMxOrNumElements, &
-          nz, &                 ! KMxOrNumFaces, &
+          5, &                  ! ZoneType (5 = FEBRICK)
+          nnNodes, &                 ! IMxOrNumPts, &
+          nnCells, &                 ! JMxOrNumElements, &
+          nnSides, &                  ! KMxOrNumFaces, &
           0, &                  ! ICellMax, &
           0, &                  ! JCellMax, &
           0, &                  ! KCellMax, &
@@ -248,205 +234,202 @@ subroutine TPoutPlt
 
   ndata = nx * ny * nz
 
+  ! узлы:
+  allocate(dataX(nnNodes), dataY(nnNodes), dataZ(nnNodes))
+
   ! координата x:
-  cnt = 1
-  do iz = nz, 1, -1
+  cnt = 0
+  do iz = 1, nz
     do js = 1, ny
       do is = 1, nx
-        data(cnt) = real(GetCLength(x(is)), 4)
         cnt = cnt + 1
+        dataX(cnt) = real(GetCLength(x(is)), 4)
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
+  call assert(cnt==nnNodes, "")
 
   ! координата y:
-  cnt = 1
-  do iz = nz, 1, -1
+  cnt = 0
+  do iz = 1, nz
     do js = 1, ny
       do is = 1, nx
-        data(cnt) = real(GetCLength(y(js)), 4)
         cnt = cnt + 1
+        dataY(cnt) = real(GetCLength(y(js)), 4)
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
 
   ! координата Z:
-  cnt = 1
-  do iz = nz, 1, -1
+  cnt = 0
+  do iz = 1, nz
     do js = 1, ny
       do is = 1, nx
-        data(cnt) = real(GetCDepth(Znode(is, js, iz)), 4)
         cnt = cnt + 1
+        dataZ(cnt) = real(GetCDepth(Znode(is, js, iz)), 4)
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
+
+  !do i = 1, min(cnt, 1000)
+  !  write(17,"('coords:;',i0,3(';',1p,g24.16))") i, dataX(i), dataY(i), dataZ(i)
+  !end do
+
+  rc = tecdat142(cnt, dataX, 0)
+  rc = tecdat142(cnt, dataY, 0)
+  rc = tecdat142(cnt, dataZ, 0)
+
+  deallocate(dataX, dataY, dataZ)
 
   ! данные в слой-ячейках:
   ndata = ncx * ncy * ncz
 
   ! скорость в слое u:
-  cnt = 1
-  data = 0.
-  do iz = ncz, 1, -1
+  cnt = 0
+  do iz = 1, ncz
     do jc = 1, ncy
       do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          !data(cnt) = GetCVelocity(c_u(ic, jc, iz))
-          data(cnt) = c_u(ic,jc,iz)
+        if(c_type(ic, jc)<=CELL_DELETED) cycle
         cnt = cnt + 1
+        data(cnt) = GetCVelocity(c_u(ic, jc, iz))
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
+  call assert(cnt==nnCells, "")
+  rc = tecdat142(cnt, data, 0)
 
   ! скорость в слое v:
-  cnt = 1
-  data = 0.
-  do iz = ncz, 1, -1
+  cnt = 0
+  do iz = 1, ncz
     do jc = 1, ncy
       do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          !data(cnt) = GetCVelocity(c_v(ic, jc, iz))
-          data(cnt) = c_v(ic,jc,iz)
+        if(c_type(ic, jc)<=CELL_DELETED) cycle
         cnt = cnt + 1
+        data(cnt) = GetCVelocity(c_v(ic, jc, iz))
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
+  call assert(cnt==nnCells, "")
+  rc = tecdat142(cnt, data, 0)
 
   ! скорость в слое w:
-  cnt = 1
-  data = 0.
-  do iz = ncz, 1, -1
+  cnt = 0
+  do iz = 1, ncz
     do jc = 1, ncy
       do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = c_w(ic, jc, iz)
+        if(c_type(ic, jc)<=CELL_DELETED) cycle
         cnt = cnt + 1
+        data(cnt) = GetCVelocityZ(c_w(ic, jc, iz))
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
-
-  ! скорость в слое absVel:
-  cnt = 1
-  data = 0.
-  do iz = ncz, 1, -1
-    do jc = 1, ncy
-      do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = GetCVelocity(SQRT(c_u(ic, jc, iz)**2 + c_v(ic, jc, iz)**2 + c_w(ic, jc, iz)**2))
-          !data(cnt) = GetCVelocity(SQRT(c_u0(ic, jc)**2+c_v0(ic, jc)**2))
-        cnt = cnt + 1
-      end do
-    end do
-  end do
-  rc = tecdat142(ndata, data, 0)
-
-  ! высота слоя h:
-  cnt = 1
-  data = 0.
-  do iz = ncz, 1, -1
-    do jc = 1, ncy
-      do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = GetCDepth(fz_z(ic, jc, iz) - fz_z(ic, jc, iz+1))
-        cnt = cnt + 1
-      end do
-    end do
-  end do
-  rc = tecdat142(ndata, data, 0)
+  call assert(cnt==nnCells, "")
+  rc = tecdat142(cnt, data, 0)
 
   ! плотность:
-  cnt = 1
-  data = 0.
-  do iz = ncz, 1, -1
+  cnt = 0
+  do iz = 1, ncz
     do jc = 1, ncy
       do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = GetCDensity(c_rho(ic, jc, iz))
+        if(c_type(ic, jc)<=CELL_DELETED) cycle
         cnt = cnt + 1
+        data(cnt) = GetCDensity(c_rho(ic, jc, iz))
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
+  call assert(cnt==nnCells, "")
+  rc = tecdat142(cnt, data, 0)
 
   ! псевдо-плотность:
-  cnt = 1
-  data = 0.
-  do iz = ncz, 1, -1
+  cnt = 0
+  do iz = 1, ncz
     do jc = 1, ncy
       do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = c_teta(ic,jc,iz)
+        if(c_type(ic, jc)<=CELL_DELETED) cycle
         cnt = cnt + 1
+        data(cnt) = c_teta(ic,jc,iz)
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
+  call assert(cnt==nnCells, "")
+  rc = tecdat142(cnt, data, 0)
 
-  ! z
-  cnt = 1
-  data = 0.
-  do iz = ncz, 1, -1
+  ! z0 - уровень поверхности
+  cnt = 0
+  do iz = 1, ncz
     do jc = 1, ncy
       do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = GetCDepth(fz_z(ic, jc, iz) + fz_z(ic, jc, iz+1)) / 2.
+        if(c_type(ic, jc)<=CELL_DELETED) cycle
         cnt = cnt + 1
+        data(cnt) = GetCDepth(fz_z(ic, jc, 1))
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
-
-  ! z0
-  cnt = 1
-  data = 0.
-  do iz = ncz, 1, -1
-    do jc = 1, ncy
-      do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = GetCDepth(fz_z(ic, jc, 1))
-        cnt = cnt + 1
-      end do
-    end do
-  end do
-  rc = tecdat142(ndata, data, 0)
+  call assert(cnt==nnCells, "")
+  rc = tecdat142(cnt, data, 0)
 
   ! rot
-  cnt = 1
-  do iz = ncz, 1, -1
+  cnt = 0
+  do iz = 1, ncz
     do jc = 1, ncy
       do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = rot(ic, jc, iz)
+        if(c_type(ic, jc)<=CELL_DELETED) cycle
         cnt = cnt + 1
+        data(cnt) = rot(ic, jc, iz)
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
+  call assert(cnt==nnCells, "")
+  rc = tecdat142(cnt, data, 0)
 
   ! id:
-  cnt = 1
-  do iz = ncz, 1, -1
+  cnt = 0
+  do iz = 1, ncz
     do jc = 1, ncy
       do ic = 1, ncx
-        if(c_type(ic, jc)>CELL_DELETED) &
-          data(cnt) = ic*1000 + jc + iz * 0.01
+        if(c_type(ic, jc)<=CELL_DELETED) cycle
         cnt = cnt + 1
+        data(cnt) = ic*1000 + jc + iz * 0.01d0
       end do
     end do
   end do
-  rc = tecdat142(ndata, data, 0)
+  call assert(cnt==nnCells, "")
+  rc = tecdat142(cnt, data, 0)
+
+  ! связность:
+
+  connectivityCount = nnCells * 8
+  allocate(connectivity(connectivityCount))
+
+  cnt = 0
+  do iz = 1, ncz
+    do jc = 1, ncy
+      do ic = 1, ncx
+        if(c_type(ic, jc)<=CELL_DELETED) cycle
+        ! 8 узлов ячейки:
+        cnt = cnt + 1; connectivity(cnt) = GetNodeNum(ic  , jc  , iz  ); !write(17,"('con:;',2(i0,';'))") cnt, connectivity(cnt)
+        cnt = cnt + 1; connectivity(cnt) = GetNodeNum(ic+1, jc  , iz  ); !write(17,"('con:;',2(i0,';'))") cnt, connectivity(cnt)
+        cnt = cnt + 1; connectivity(cnt) = GetNodeNum(ic+1, jc+1, iz  ); !write(17,"('con:;',2(i0,';'))") cnt, connectivity(cnt)
+        cnt = cnt + 1; connectivity(cnt) = GetNodeNum(ic  , jc+1, iz  ); !write(17,"('con:;',2(i0,';'))") cnt, connectivity(cnt)
+
+        cnt = cnt + 1; connectivity(cnt) = GetNodeNum(ic  , jc  , iz+1); !write(17,"('con:;',2(i0,';'))") cnt, connectivity(cnt)
+        cnt = cnt + 1; connectivity(cnt) = GetNodeNum(ic+1, jc  , iz+1); !write(17,"('con:;',2(i0,';'))") cnt, connectivity(cnt)
+        cnt = cnt + 1; connectivity(cnt) = GetNodeNum(ic+1, jc+1, iz+1); !write(17,"('con:;',2(i0,';'))") cnt, connectivity(cnt)
+        cnt = cnt + 1; connectivity(cnt) = GetNodeNum(ic  , jc+1, iz+1); !write(17,"('con:;',2(i0,';'))") cnt, connectivity(cnt)
+      end do
+    end do
+  end do
+  call assert(cnt==connectivityCount, "")
+  rc = tecnod142(connectivity)
+
+  deallocate(connectivity)
 
   rc = tecend142()
+  flush(17)
 
   !...........................................................................................................
 
-  if(test_numb==4) then     ! точное решение
+  if(taskNum==4) then     ! точное решение
 
     ! ! удаляем существующие файлы:
     ! if(iout==0) then
@@ -457,7 +440,7 @@ subroutine TPoutPlt
     ! ! конструируем имя файла:
     ! write(fname, "(a,i6.6,a)") "./out2/a", iout, ".plt"//c0
 
-    ! write(buf,"(a,i0,a)") "TITLE = ""TEST_NO: ", test_numb, """"
+    ! write(buf,"(a,i0,a)") "TITLE = ""TEST_NO: ", taskNum, """"
     ! rc = tecini142( &
     !         buf//c0, &                                                    ! заголовок
     !         'x h ha'//c0, &                                               ! переменные
@@ -558,10 +541,10 @@ subroutine TPoutPlt2
   real(4),pointer:: data(:)
   integer(4) :: ic, jc, js, is, iz, isr, isl, jsb, jsf, rc, cnt, ndata
   integer(4) :: i1, i2, i3, i4, i5, i6, i, j, k, kk
-  ! переменные:                           x  y  z  u  v  w  h rho T z0 rot id
-  integer(4) :: ValueLocation(12) =    (/ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0 /)         ! 0: cell, 1: node
-  integer(4) :: PassiveVarList(12) =   (/ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /)
-  integer(4) :: ShareVarFromZone(12) = (/ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /)
+  ! переменные:                           x  y  z  u  v  w rho T z0 rot id
+  integer(4) :: ValueLocation(11) =    (/ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0 /)         ! 0: cell, 1: node
+  integer(4) :: PassiveVarList(11) =   (/ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /)
+  integer(4) :: ShareVarFromZone(11) = (/ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 /)
   !integer(4) :: ValueLocationA(3) = (/ 1, 1, 1 /)         ! 0: point, 1: cell
   !integer(4) :: PassiveVarListA(3) = (/ 0, 0, 0 /)
   !integer(4) :: ShareVarFromZoneA(3) = (/ 0, 0, 0 /)
@@ -726,10 +709,10 @@ subroutine TPoutPlt2
     call execute_command_line("rm -f ./out/*")
   end if
 
-  write(buf,"(a,i0,a)") "TITLE = ""TEST_NO: ", test_numb, """"
+  write(buf,"(a,i0,a)") "TITLE = ""TEST_NO: ", taskNum, """"
   rc = tecini142( &
           buf//c0, &                                                    ! заголовок
-          'x y z u v w h rho T z0 rot id'//c0, &                        ! переменные
+          'x y z u v w rho T z0 rot id'//c0, &                        ! переменные
           fname//c0, &                                                  ! имя файла
           './out'//c0, &                                                ! scratch dir
           0, &                                                          ! формат файла: 0=.plt 1=.szplt
@@ -740,7 +723,7 @@ subroutine TPoutPlt2
 
   ! общие параметры:
   if(iout==0) then
-    write(buf, "(i0,a)") test_numb, c0;   rc = tecauxstr142("task"//c0, buf)
+    write(buf, "(i0,a)") taskNum, c0;   rc = tecauxstr142("task"//c0, buf)
     write(buf, "(f4.2,a)") cfl, c0;       rc = tecauxstr142("cfl"//c0, buf)
     write(buf, "(i0,a)") nx, c0;          rc = tecauxstr142("nx"//c0, buf)
     write(buf, "(i0,a)") ny, c0;          rc = tecauxstr142("ny"//c0, buf)
@@ -756,7 +739,7 @@ subroutine TPoutPlt2
 
   ! время:
   ti = GetCTime(ttime)
-  !if(test_numb==1) ti = ti / 3600. / 24.              ! сек -> дни
+  !if(taskNum==1) ti = ti / 3600. / 24.              ! сек -> дни
 
   write(buf,"(i0, a,i0)") iout, ". step ", istep
   rc = teczne142( &
@@ -1034,3 +1017,13 @@ function GetTPoutPlt2Data(i,j,k,vc,vfx,vfy)
   GetTPoutPlt2Data = v
 end function GetTPoutPlt2Data
 
+!-----------------------------------------------------------------------------------------------
+
+function GetNodeNum(i, j, k)
+  use variables
+  implicit none
+  integer:: i,j,k,GetNodeNum
+
+  GetNodeNum = (k-1)*nx*ny + (j-1)*nx + i
+
+end function
