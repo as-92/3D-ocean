@@ -20,6 +20,145 @@
 
 !============================================================================================================
 
+! Проточный тест с аналитическим решением
+subroutine SetupTask_4
+  use variables
+  implicit none
+
+  integer:: i, ic, iz, j, jc, k
+  real(R8):: dx, dy
+  real(R8):: tci, bci
+  real(R8):: ui, vi, xi, yi, zi, z0
+
+  dl=20.; dw=1.                                                 ! размер области
+  nx=65; ny=2; nz=21                                             ! количество узлов сетки
+
+  bctypex = BC_IN; bctypey = BC_SLIDE
+
+  call allocate
+
+  ! отладка:
+  debstartstep = 0; debendstep = -5
+  debstartz = 1; debendz = 400
+
+  !debcells(51, 1, 20) = 20
+  !debcells(ncx, 1) = 1
+  !debSidesX(1, 1) = 1
+  !debSidesX(nxx, 1) = 1
+
+  !debCells(20, 12) = 1
+  !debCells(12, 20) = 1
+  !debSidesX(20, 12) = 1
+  !debsidesY(12, 20) = 1
+
+  !debcells(31, 1) = 1
+  !debSidesX(31, 1) = 1
+  !debSidesZ(31, 1) = 1
+
+#if 1
+  nt=20000                                                          ! полное число шагов по времени
+  nprint=max(1,nt/200)                                           ! интервал печати
+#else
+  maxt=100.
+  tprint=maxt/200.
+#endif
+
+  CFL = 0.3                                                     ! Число Куранта
+
+  pan = 0.0                                                     !- параметр Паниковского
+
+  ! константы:
+  g = 1
+  rho0 = 1.
+  teta0 = 1.
+  sound0 = 1.             ! псевдо-скорость звука:
+
+  ! Расчет начальной сетки
+  x(1) = -dl / 2.
+  dx = dl / (nx-1)
+  do i=1,ncx; x(i+1) = x(i) + dx; end do                        ! координаты узлов сетки
+
+  y(1) = -dw / 2.
+  dy = dw / (ny-1)
+  do j=1,ny-1; y(j+1) = y(j) + dy; end do                       ! координаты узлов сетки
+
+  z0=task4_h(x(1))                                              ! фоновый уровень поверхности
+  b0=0.                                                         ! фоновый уровень дна
+
+  do jc=1, ncy
+    do ic=1, ncx
+      xi = (x(ic) + x(ic+1)) / 2.                               ! x-координата ячейки
+
+      bci = task4_b(xi)                                         ! уровень дна в ячейке
+      tci = task4_h(xi) + task4_b(xi)                           ! уровень поверхности в ячейке
+
+      ! равномерная сетка по вертикали от поверхности до дна:
+      fz_z(ic, jc, 1) = tci
+      fz_z(ic, jc, nz) = bci
+      do iz = 2, nz-1
+        fz_z(ic, jc, iz) = bci + (nz - iz) * (tci - bci)/(nz - 1.)
+      end do
+    end do
+  end do
+
+  ! начальные данные на сетке; слои:
+  c_rho = rho0
+  c_teta = teta0
+  do i=1,ncx; do j=1,ncy; do k=1,ncz
+    xi = (x(i) + x(i+1)) / 2.                                   ! x-координата ячейки
+    zi = (fz_z(i,j,k) + fz_z(i,j,k+1)) / 2.
+    c_u(i,j,k) = task4_u(xi, zi)
+    c_v(i,j,k) = 0.
+    c_w(i,j,k) = 0.
+  end do; end do; end do
+
+  ! начальные данные на сетке; мелкая вода:
+  do i=1,ncx; do j=1,ncy;
+    ui = 0.
+    do k=1,ncz
+      ui = ui + c_u(i,j,k) * (fz_z(i,j,k) - fz_z(i,j,k+1))
+    end do
+    c_h0(i,j) = fz_z(i,j,1) - fz_z(i,j,nz)
+    c_u0(i,j) = ui / c_h0(i,j)
+    c_v0(i,j) = 0.
+    c_rho0 = rho0
+  end do; end do
+
+  if(bctypex==BC_IN) then                                             ! ГУ "вход" слева и справа
+
+    allocate(bcData(2))                                              ! данные на левом и правом торце
+
+    ! левая грань:
+    xi = x(1)
+    bcData(1).h = task4_h(xi)
+    bcData(1).u = 0.
+    bcData(1).v = 0.
+    bcData(1).w = 0.
+    bcData(1).rho = rho0
+    bcData(1).teta = teta0
+
+    i = 1
+    do j=1,ncy
+      fx_bc(i,j) = 1
+    end do
+
+    ! правая грань:
+    bcData(2).h = z0 - b0
+    bcData(2).u = 0.
+    bcData(2).v = 0.
+    bcData(2).w = 0.
+    bcData(2).rho = rho0
+    bcData(2).teta = teta0
+
+    i = nxx
+    do j=1,ncy
+      fx_bc(i,j) = 2
+    end do
+  end if
+end
+
+!---------------------------------------------------------------------------------------------------------------------
+
 ! Вихрь X-Y
 subroutine SetupTask_8
   use variables
@@ -270,20 +409,29 @@ subroutine SetupTask_10
   integer:: i, ic, il, ir, iz, j, jc, jl, jr, k
   real(R8):: alfah, bci, betah, cosa, delbot, deltop, dmu_0, dx, dy
   real(R8):: dzbot, dzbotcoef, dztop, dztopcoef, h_0, hi
-  real(R8):: p_0, r0, r_0, rbot, ri, rtop, stepen, tci, u_0
+  real(R8):: p_0, r0, r_0, rbot, ri, rtop, stepen, tci, u_0, ul, ur
   real(R8):: ui, vi, xbot, ybot, xci, xtop, ytop, yci, z0
 
-#if 0
-  dl=20.; dw=1.                 ! размер области
-  nx=65; ny=2; nz=2;           ! количество узлов сетки
-#elif 1
-  dl=1.; dw=20.                 ! размер области
-  nx=2; ny=65; nz=2;           ! количество узлов сетки
-#else
-  dl=20.; dw=20.                 ! размер области
-  nx=45; ny=45; nz=2;           ! количество узлов сетки
+#if 1         /* 1D-X */
+
+  dl=20.; dw=1.                                                 ! размер области
+  nx=65; ny=2; nz=21                                             ! количество узлов сетки
+
+#elif 0       /* 1D-Y */
+
+  dl=1.; dw=20.                                                 ! 1D-Y: размер области
+  nx=2; ny=65; nz=2;                                            ! количество узлов сетки
+
+#else         /* 2D */
+
+  dl=20.; dw=20.                                                ! 2D: размер области
+  nx=45; ny=45; nz=2;                                           ! количество узлов сетки
+
 #endif
-  bctypex = 1; bctypey = 1      ! тип ГУ на боковых границах
+
+  bctypex = BC_PERIODIC; bctypey = BC_PERIODIC                  ! тип ГУ на боковых границах - периодика
+  bctypex = BC_SLIDE; bctypey = BC_SLIDE                        ! тип ГУ на боковых границах - скольжение
+  bctypex = BC_IN; bctypey = BC_SLIDE
 
   call allocate
 
@@ -291,7 +439,7 @@ subroutine SetupTask_10
   debstartstep = 0; debendstep = 5
   debstartz = 1; debendz = 400
 
-  !debcells(1, 1) = 1
+  debcells(51, 1, 20) = 20
   !debcells(ncx, 1) = 1
   !debSidesX(1, 1) = 1
   !debSidesX(nxx, 1) = 1
@@ -305,51 +453,55 @@ subroutine SetupTask_10
   !debSidesX(31, 1) = 1
   !debSidesZ(31, 1) = 1
 
-#if 0
-  nt=200 ! полное число шагов по времени
-  nprint=nt/200 ! интервал печати
+#if 1
+  nt=20000                                                          ! полное число шагов по времени
+  nprint=max(1,nt/200)                                           ! интервал печати
 #else
-  maxt=50.
+  maxt=100.
   tprint=maxt/200.
 #endif
 
-  CFL = 0.3 ! Число Куранта
+  CFL = 0.3                                                     ! Число Куранта
 
-  pan=0.0 !- параметр Паниковского
+  pan = 0.0                                                     !- параметр Паниковского
 
   g = 1
+
+  ! константы:
   rho0 = 1.
+  teta0 = 1.
+  sound0 = 1.             ! псевдо-скорость звука:
 
   ! Расчет начальной сетки
   x(1) = -dl / 2.
   dx = dl / (nx-1)
-  do i=1,ncx; x(i+1) = x(i) + dx; end do                    ! координаты узлов сетки
+  do i=1,ncx; x(i+1) = x(i) + dx; end do                        ! координаты узлов сетки
 
   y(1) = -dw / 2.
   dy = dw / (ny-1)
-  do j=1,ny-1; y(j+1) = y(j) + dy; end do                   ! координаты узлов сетки
+  do j=1,ny-1; y(j+1) = y(j) + dy; end do                       ! координаты узлов сетки
 
-  z0=1.                                   ! фоновый уровень поверхности
-  b0=0.                                   ! фоновый уровень дна
+  z0=1.                                                         ! фоновый уровень поверхности
+  b0=0.                                                         ! фоновый уровень дна
 
   ! для поверхности:
-  dztopcoef = 1. !0.01                        ! коэффициент подъема поверхности (0<cf<1)
-  rtop = max(dl,dw)/4.                            ! ширина возмущения поверхности
-  xtop = x(1) + 0.5 * dl                  ! координата центра  на поверхности
+  dztopcoef = 0!.5 !0.05                                              ! коэффициент подъема поверхности (0<cf<1)
+  rtop = 0.2 * max(dl,dw)                                      ! ширина возмущения поверхности
+  xtop = x(1) + 0.3 * dl                                        ! координата центра  на поверхности
   ytop = y(1) + 0.5 * dw
-  dztop = dztopcoef * (z0 - b0)           ! вертикальный размер возмущения
+  dztop = dztopcoef * (z0 - b0)                                 ! вертикальный размер возмущения
 
   ! возмущение дна:
-  dzbotcoef = 0.                          ! коэффициент подъема дна (0<cf<1)
-  rbot = max(dl,dw)/4.                            ! ширина возмущения дна
-  xbot = x(1) + 0.5 * dl                  ! координата возмущения
+  dzbotcoef = 0.5                                               ! коэффициент подъема дна (0<cf<1)
+  rbot = 0.2 * max(dl,dw)                                      ! ширина возмущения дна
+  xbot = x(1) + 0.8 * dl                                        ! координата возмущения
   ybot = y(1) + 0.5 * dw
-  dzbot = dzbotcoef * (z0 - b0)           ! вертикальная величина колебания дна
+  dzbot = dzbotcoef * (z0 - b0)                                 ! вертикальная величина колебания дна
 
   do jc=1, ncy
-    yci = (y(jc) + y(jc+1)) / 2.                 ! y-координата ячейки
+    yci = (y(jc) + y(jc+1)) / 2.                                ! y-координата ячейки
     do ic=1, ncx
-      xci = (x(ic) + x(ic+1)) / 2.               ! x-координата ячейки
+      xci = (x(ic) + x(ic+1)) / 2.                              ! x-координата ячейки
 
       ! бугор на поверхности:
       deltop = 0.
@@ -359,8 +511,8 @@ subroutine SetupTask_10
         if(ri<r0) r0 = ri
       end do; end do
 
-      if(r0<rtop) then                                                 ! если в пределах возмущения
-        ri = r0 / rtop                                                ! нормируем на 0..1
+      if(r0<rtop) then                                          ! если в пределах возмущения
+        ri = r0 / rtop                                          ! нормируем на 0..1
         cosa = cos(pi * ri)
         deltop = dztop * ((1.d0 + cosa) / 2.d0)
       end if
@@ -382,24 +534,24 @@ subroutine SetupTask_10
       tci = z0 + deltop                             ! уровень поверхности в ячейке
 
       ! равномерная сетка по вертикали от поверхности до дна:
-      do iz = 1, nz
-        fz_z(ic, jc, iz) = tci - (iz - 1.) * (tci - bci)/(nz - 1.)
+      fz_z(ic, jc, 1) = tci
+      fz_z(ic, jc, nz) = bci
+      do iz = 2, nz-1
+        !fz_z(ic, jc, iz) = tci - (iz - 1.) * (tci - bci)/(nz - 1.)
+        fz_z(ic, jc, iz) = bci + (nz - iz) * (tci - bci)/(nz - 1.)
       end do
     end do
   end do
 
   ! начальные данные на сетке; мелкая вода:
-  u_0 = 0 !0.1d0                                                            ! скорость потока
+  u_0 = 0.1                                                            ! скорость потока
+  ul = 0.1
+  ur = 0.1
   c_h0(:,:) = fz_z(:,:,1) - fz_z(:,:,nz)
   c_rho0 = rho0
   dmu_0 = u_0 * c_h0(1,1)                                             ! импульс в одной из ячеек
   c_u0 = dmu_0 / c_h0                                                 ! скорость с учётом равного импульса
   c_v0 = 0.
-
-  ! константы:
-  rho0 = 1.
-  teta0 = 1.
-  sound0 = 2.             ! псевдо-скорость звука:
 
   ! начальные данные на сетке; слои:
   c_rho = rho0
@@ -410,17 +562,36 @@ subroutine SetupTask_10
     c_w(i,j,k) = 0.
   end do; end do; end do
 
-  ! For WB test
-#if 0
-  do k=1,nz-1
-    do j=1,ny-1
-      do i=1,nx-1
-        c_du(i,j,k)=0.25*( fx_du(i,j,k)+fx_du(i+1,j,k)+fy_du(i,j,k)+fy_du(i,j+1,k))
-        c_dv(i,j,k)=0.25*(fx_dv(i,j,k)+fx_dv(i+1,j,k)+fy_dv(i,j,k)+fy_dv(i,j+1,k))
-      enddo
-    enddo
-  enddo
-#endif
+  if(bctypex==BC_IN) then                                             ! ГУ "вход" слева и справа
+
+    allocate(bcData(2))                                              ! данные на левом и правом торце
+
+    ! левая грань:
+    bcData(1).h = z0 - b0
+    bcData(1).u = ul
+    bcData(1).v = 0.
+    bcData(1).w = 0.
+    bcData(1).rho = rho0
+    bcData(1).teta = teta0
+
+    i = 1
+    do j=1,ncy
+      fx_bc(i,j) = 1
+    end do
+
+    ! правая грань:
+    bcData(2).h = z0 - b0
+    bcData(2).u = ur
+    bcData(2).v = 0.
+    bcData(2).w = 0.
+    bcData(2).rho = rho0
+    bcData(2).teta = teta0
+
+    i = nxx
+    do j=1,ncy
+      fx_bc(i,j) = 2
+    end do
+  end if
 
 end
 

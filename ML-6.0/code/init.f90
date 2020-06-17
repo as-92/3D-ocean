@@ -6,7 +6,7 @@ subroutine Init
   logical:: isabcini1 = .true.   ! экспонентациальное увеличение толщин слоёв в тесте Залесного
   logical:: isusesavingdata = .false.!.true.   ! использовать ли сохраненные данные
   logical:: isseriadtest  !В Лабораторных тестах серии D используется 3 слоя
-  logical:: isfirsttimehere = .true.
+  logical:: isFirstFimeHere = .true.
   integer:: ic, jc, is, iz, i, j, k, i1, i2, j1, j2, il, ir, jl, jr, ccr, ccl, kb, kt
   integer:: loadstep, loadiout
   real(R8):: loadtime
@@ -24,7 +24,7 @@ subroutine Init
   ! Выбор теста
   ! -1) 2D тест Залесного про экватор c кориолисом
   ! -2) Steady solution with shock
-  ! -4) Тест 5.1 из статьи J.Sainte-Marie Analytical solutions... 2013
+  ! 4) Тест 5.1 из статьи J.Sainte-Marie Analytical solutions... 2013
   ! -5) Проточный тест на неровном дне с периодическими ГУ по оси X
   ! -6) Проточный тест на неровном дне с периодическими ГУ по оси Y
   ! -7) Проточный тест на неровном дне с периодическими ГУ по двум осям
@@ -40,7 +40,7 @@ subroutine Init
   ! -998 тест мелой воды
   ! -999 тест мелой воды (вихрь)
 
-  taskNum = 200
+  taskNum = 10
 
   ! что печатать: 1 - печать, 0 - не печатать
   print_height = 1
@@ -70,6 +70,7 @@ subroutine Init
   nprint = 0
 
   select case (taskNum)
+    case (  4);  call avost; call SetupTask_4          ! проточный тест с аналитическим решением
     case (  8);  call SetupTask_8          ! вихрь X-Y
     case (  9);  call SetupTask_9          ! вихревая пара X-Z
     case ( 10);  call SetupTask_10         ! горбы
@@ -81,7 +82,8 @@ subroutine Init
   end select
 
   write(*,"(4(a,i0),3(a,1p,g12.4))") &
-    "Test ",taskNum," cells: ",ncx,"x",ncy,"x",ncz,". Size: ",dl,"x",dw,". CFL=",cfl
+    "Task ",taskNum," cells: ",ncx,"x",ncy,"x",ncz,". Size: ",dl,"x",dw,". CFL=",cfl
+  write(*,"(a,i0,a,1p,g12.4)") "    max-step: ", nt, " max-time: ", maxt
 
   call dims   ! обезразмеривание
 
@@ -279,6 +281,10 @@ subroutine Init
       fz_rho(i,j,k) = (c_rho(i,j,kt) + c_rho(i,j,kb)) / 2.
       fz_teta(i,j,k) = (c_teta(i,j,kt) + c_teta(i,j,kb)) / 2.
     end do
+    ! ГУ на дне:
+    fz_w(i,j,nz) = fz_u(i,j,nz) * (fx_z(i+1,j,nz) - fx_z(i,j,nz)) / c_dx(i) + &
+                   fz_v(i,j,nz) * (fy_z(i,j+1,nz) - fy_z(i,j,nz)) / c_dy(j)
+    debdum = 0
   end do
 
   !.......................................................................
@@ -382,5 +388,73 @@ subroutine Init
     enddo
   enddo
   etot_0=ekin_0+epot_0
+
+  !-- печать начальных данных: ---------------------------------------------------
+
+  isFirstFimeHere = .true.
+
+  ! ячейки:
+  do i=1,ncx; do j=1,ncy
+    if(c_type(i,j)<=CELL_DELETED) cycle
+    do k=1,ncz
+      if(IsDebCell(i, j, k)) then
+        if(isFirstFimeHere) then
+          isFirstFimeHere = .false.
+          write(17,"(a)") "INITIAL DATA"
+          write(17,"(a)") ";i;j;k;teta;drho;u;v;w"
+        end if
+        write(17,"('UC:' ,3(';',i0),100(';',1p,g0.16))") i, j, k,  c_teta(i,j,k),  c_rho(i,j,k),  c_u(i,j,k),  c_v(i,j,k),  c_w(i,j,k)
+        flush(17)
+      end if
+    end do
+  end do; end do
+
+  ! X-грани:
+  do i=1,nxx; do j=1,nxy
+    if(fx_type(i,j)<=BC_DELETED) cycle
+    do k=1,ncz
+      if(IsDebSideX(i,j,k)) then
+        if(isFirstFimeHere) then
+          isFirstFimeHere = .false.
+          write(17,"(a)") "INITIAL DATA"
+          write(17,"(a)") ";i;j;k;teta;drho;u;v;w"
+        end if
+        write(17,"('FX:' ,3(';',i0),100(';',1p,g0.16))") i, j, k,  fx_teta(i,j,k),  fx_rho(i,j,k),  fx_u(i,j,k),  fx_v(i,j,k),  fx_w(i,j,k)
+        flush(17)
+      end if
+    end do
+  end do; end do
+
+  ! Y-грани:
+  do i=1,nyx; do j=1,nyy
+    if(fy_type(i,j)<=BC_DELETED) cycle
+    do k=1,ncz
+      if(IsDebSideY(i,j,k)) then
+        if(isFirstFimeHere) then
+          isFirstFimeHere = .false.
+          write(17,"(a)") "INITIAL DATA"
+          write(17,"(a)") ";i;j;k;teta;drho;u;v;w"
+        end if
+        write(17,"('FY:' ,3(';',i0),100(';',1p,g0.16))") i, j, k,  fy_teta(i,j,k),  fy_rho(i,j,k),  fy_u(i,j,k),  fy_v(i,j,k),  fy_w(i,j,k)
+        flush(17)
+      end if
+    end do
+  end do; end do
+
+  ! Z-грани:
+  do i=1,ncx; do j=1,ncy
+    if(c_type(i,j)<=CELL_DELETED) cycle
+    do k=1,nz
+      if(IsDebSideZ(i, j, k)) then
+        if(isFirstFimeHere) then
+          isFirstFimeHere = .false.
+          write(17,"(a)") "INITIAL DATA"
+          write(17,"(a)") ";i;j;k;teta;drho;u;v;w"
+        end if
+        write(17,"('FZ:' ,3(';',i0),100(';',1p,g0.16))") i, j, k,  fz_teta(i,j,k),  fz_rho(i,j,k),  fz_u(i,j,k),  fz_v(i,j,k),  fz_w(i,j,k)
+        flush(17)
+      end if
+    end do
+  end do; end do
 
 end subroutine Init

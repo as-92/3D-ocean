@@ -36,14 +36,14 @@ subroutine info(startTime)
   real(4) :: startTime
   integer(4) :: curTime, difTime, estimateTime, rest
   integer(4) :: td, th, tm, ts, tde, the, tme, tse
-  integer(4) :: ix, iy, iz, isl, isr, isb, ist
+  integer(4) :: ix, iy, iz, isl, isr, isb, ist, i, j, k, ic
   real(R8) :: vel, velxy, maxVel3, maxVel2, Et2, Et3, Ek2, Ek3, Ep, Ek2i, Ek3i, mci, wci, mtot, z1, z2
   real(R8) :: uci, vci, ucni, vcni, voli, zci, zcni, zl, zr, zb, zt, hmin, hmax, hmin0, hmax0, tetaMin, tetaMax
   real(R8) :: fT, fB, hsl, hsr, hsb, hst, hi, tci, tmci, tTot, tmTot
   real(R8), save :: Ep0, vol0
   real(R8) :: umx(nx,ny), umy(nx,ny)                 ! средние по столбцу потоковые скорости
   real(R8) :: f(nx, ny, nz)
-  real(8):: soundk, dtLim_x, dtLim_y
+  real(8):: soundk, dtLim_x, dtLim_y, umod2, maxUmod2
   real(8):: z                                         ! число Зайцев
   logical, save :: isFirstTimeHere = .true.
   character(len=100), save:: fname
@@ -70,18 +70,30 @@ subroutine info(startTime)
     z = difTime / ((nx-1.d0)*(ny-1.d0)*(nz-1.d0)*istep) * 1.d6
   end if
 
+  ! подсчёт макс. параметров на шаге выдачи:
+  maxUmod2 = 0.
+  do ic=1,ncells                                                ! цикл по плоcким ячейкам
+    i = cells.ptr(ic).i
+    j = cells.ptr(ic).j
+    do k=1, ncz
+      umod2 = c_u(i,j,k)**2 + c_v(i,j,k)**2 + c_w(i,j,k)**2
+      if(umod2>maxUmod2) maxUmod2 = umod2
+    end do
+  end do
+
+  ! выдача на экран:
   tse = mod(estimateTime,60)                    ! прогноз секунды
   rest = (estimateTime - tse) / 60              ! остаток в минутах
   tme = mod(rest, 60)                           ! прогноз минуты
   the = (rest - tme) / 60                       ! прогноз часы
   if(th<100 .and. the<100) then
-    !                                       дни         dt step,iout    зайцы    cf
+    !                                       дни         dt step,iout    зайцы    umax
     !                                        V          V      V          V      V
-    write(*,"(6(i2.2,a),i0, a,1p,g12.4, a,0p,f0.2, a,1p,g12.4, 2(a,i0), a,0p,f0.2,a,  a,1p,g12.4)") &
+    write(*,"(6(i2.2,a),i0, a,1p,g12.4, a,0p,f0.2, a,1p,g12.4, 2(a,i0), a,0p,f0.2,a,1p,g12.4)") &
       th,':',tm,':',ts,'/',the,':',tme,':',tse,'  ', &
       printproc, &
       '%. t=', GetCTime(ttime), ' (', GetCTime(ttime)/(3600.*24.), ' дн) dt=', dt, &
-      ' step: ', istep, ' iout=', iout, ' (', z, ' Зайцев)'
+      ' step: ', istep, ' iout=', iout, ' (', z, ' Зайцев). max-u=', sqrt(maxUmod2)
   else
     rest = th                                   ! прошло часы
     th = mod(rest, 24)                          ! часы (0..24)
@@ -89,11 +101,11 @@ subroutine info(startTime)
     rest = the                                  ! остаток часы
     the = mod(rest, 24)                         ! прогноз часы (0..24)
     tde = (rest - tme) / 24                     ! прогноз дни
-    write(*,"(2(i0,a,3(i2.2,a)),i0, a,1p,g12.4, a,0p,f0.2, a,1p,g12.4, 2(a,i0), a,0p,f0.2,a, a,1p,g12.4)") &
+    write(*,"(2(i0,a,3(i2.2,a)),i0, a,1p,g12.4, a,0p,f0.2, a,1p,g12.4, 2(a,i0), a,0p,f0.2,a,1p,g12.4)") &
       td,':',th,':',tm,':',ts,'/',tde,':',the,':',tme,':',tse,'  ', &
       printproc, &
       '%. t=', GetCTime(ttime), ' (', GetCTime(ttime)/(3600.*24.), ' дн) dt=', dt, &
-      ' step: ', istep, ' iout=', iout, ' (', z, ' зайцев)'
+      ' step: ', istep, ' iout=', iout, ' (', z, ' зайцев). max-u=', sqrt(maxUmod2)
   end if
 
   ! статистика:
@@ -210,6 +222,9 @@ subroutine Steps
 #endif
 
   do while(.true.)
+    if(istep==500) &
+      debdum = 0
+
     call CalcDt                                                 ! вычисление шага по времени
 
     istep=istep+1                                               ! Счетчик временных шагов
@@ -385,9 +400,11 @@ end subroutine Step
 subroutine CalcDt
   use variables
   integer(4) :: i, j, k
-  real(R8):: dx, dy, dtMin, sound, uc, vc, wc, dtk
+  real(R8):: dx, dy, dtmin, dtMin1, dtMin2, dtmin3, sound, uc, vc, wc, dtk
 
-  dtMin = 1.d100
+  dtMin1 = 1.d100
+  dtMin2 = dtMin1
+  dtmin3 = dtmin1
   maxSound = 0.
 
   do i=1,ncx
@@ -403,12 +420,12 @@ subroutine CalcDt
       ! ограничение на шаг мелкой воды:
       sound = sqrt(g * c_h0(i,j))
       dtk = dx / (abs(c_u0(i,j)) + sound)
-      if(dtk<dtmin) then
-        dtmin = dtk
+      if(dtk<dtmin1) then
+        dtmin1 = dtk
       end if
       dtk = dy / (abs(c_v0(i,j)) + sound)
-      if(dtk<dtmin) then
-        dtmin = dtk
+      if(dtk<dtmin1) then
+        dtmin1 = dtk
       end if
 
       ! ограничения от негидростатики:
@@ -417,22 +434,23 @@ subroutine CalcDt
         ! по направлению X:
         uc = c_u0(i,j) + c_du(i,j,k)                      ! реальная X-скорость в слой-ячейке
         dtk = dx / (abs(uc) + cs_sound)
-        if(dtk<dtmin) then
-          dtmin = dtk
+        if(dtk<dtmin2) then
+          dtmin2 = dtk
         endif
 
         ! по направлению Y:
         vc = c_v0(i,j) + c_dv(i,j,k)                      ! реальная Y-скорость в слой-ячейке
         dtk = dy / (abs(vc) + cs_sound)
-        if(dtk<dtmin) then
-          dtmin = dtk
+        if(dtk<dtmin2) then
+          dtmin2 = dtk
         endif
 
         ! по направлению Z:
-        wc = c_GetW0(i,j,k) + c_dw(i,j,k)                  ! реальная W-скорость в слой-ячейке
+        wc = c_w(i,j,k)                                   ! реальная W-скорость в слой-ячейке
+        wc = wc - (fz_zp(i,j,k) + fz_zp(i,j,k+1)) / 2.    ! w - z_с_точкой
         dtk = (fz_z(i,j,k) - fz_z(i,j,k+1)) / (abs(wc) + cs_sound)
-        if(dtk<dtmin) then
-          dtmin = dtk
+        if(dtk<dtmin3) then
+          dtmin3 = dtk
         endif
 
       enddo
@@ -442,7 +460,10 @@ subroutine CalcDt
 
   !if(dtmin>dtVisc) dtmin = dtVisc                        ! ограничение от вязкости
 
+  dtmin = min(dtmin1, dtmin2, dtmin3)
   dt = CFL * dtmin
+
+  !if(mod(istep,100)==0) write(*,"('dt:', 3(' ', 1p,g12.4))") dtmin1*CFL, dtmin2*CFL, dtmin3*CFL
 
 end subroutine CalcDt
 

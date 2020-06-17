@@ -23,7 +23,7 @@ subroutine Phase1
     dy = c_dy(j)
 
     do k=1,nz
-      dwz(k) = (fz_GetW0(i,j,k) + fz_dw(i,j,k)) - fz_zp(i,j,k)
+      dwz(k) = fz_w(i,j,k) - fz_zp(i,j,k)
       fzs_z(i,j,k) = fz_z(i,j,k) + dt/2 * fz_zp(i,j,k)
     end do
 
@@ -242,6 +242,7 @@ subroutine Phase1
                    ( q_yr * dz_yr - q_yl * dz_yl) / dy + &
                    ( q_yb * dz_yb - q_yt * dz_yt) / dy + &
                    ( (q_t * dwz(k) + dp_t / rho0) - (q_b * dwz(k+1) + dp_b * rho0) ) + &
+!                   ( (q_t * dwz(k)              ) - (q_b * dwz(k+1)              ) ) + &
                    g * (rho_c - rho0) / rho0 * dz_c &
                                     ) * dt / 2.
 
@@ -526,7 +527,8 @@ subroutine Phase3
                    ( q_xb * dz_xb - q_xt * dz_xt) / dx + &
                    ( q_yr * dz_yr - q_yl * dz_yl) / dy + &
                    ( q_yb * dz_yb - q_yt * dz_yt) / dy + &
-                   ( (q_t * dwz(k) + dp_t / rho0) - (q_b * dwz(k+1) + dp_b * rho0) ) + &
+                   ( (q_t * dwz(k) + dp_t / rho0) - (q_b * dwz(k+1) + dp_b / rho0) ) + &
+!                   ( (q_t * dwz(k)              ) - (q_b * dwz(k+1)               ) ) + &
                    g * (rho_c - rho0) / rho0 * dz_c &
                                     ) * dt / 2.
 

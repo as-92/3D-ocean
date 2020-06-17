@@ -46,10 +46,10 @@ endif
 FLOPTS = $(PGOPT) -L ./lib -ltecio #-lpthread -lstdc++ -lc++
 #LDFLAGS = -g
 
-$(info srcs.mods: ${srcs.mods})
-$(info srcs.f90: ${srcs.f90})
-$(info objs.mods: ${objs.mods})
-$(info FFLAGS: $(FFLAGS))
+#$(info srcs.mods: ${srcs.mods})
+#$(info srcs.f90: ${srcs.f90})
+#$(info objs.mods: ${objs.mods})
+#$(info FFLAGS: $(FFLAGS))
 
 all: $(objs.mods) $(exe)
 

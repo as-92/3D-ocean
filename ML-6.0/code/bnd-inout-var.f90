@@ -33,7 +33,7 @@ subroutine fx_BndInoutVar
 
     ownRight = fx_IsOwnRight(i,j)                                  ! лежит ли ячейка справа
 
-    ic = i; if(ownRight) ic = i + 1
+    ic = i; if(.not.ownRight) ic = i - 1
 
     ! вычисляем инварианты из-за границы "как есть", без изменения глубины
 
@@ -158,7 +158,7 @@ subroutine fy_BndInoutVar
 
     ownRight = fy_IsOwnRight(i,j)                                  ! лежит ли ячейка справа
 
-    jc = j; if(ownRight) jc = j + 1
+    jc = j; if(.not.ownRight) jc = j - 1
 
     ! вычисляем инварианты из-за границы "как есть", без изменения глубины
 

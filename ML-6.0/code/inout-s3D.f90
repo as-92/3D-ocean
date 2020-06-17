@@ -29,10 +29,10 @@ subroutine TPoutPlt
   real(4) :: data(nx * ny * nz)
   integer(4) :: ic, jc, js, is, iz, isr, isl, jsb, jsf, rc, cnt, ndata
   integer(4) :: i1, i2, i3, i4, i5, i6, i, j, k
-  ! переменные:                           x  y  z  u  v  w rho teta z0 rot id
-  integer(4) :: ValueLocation(11) =    (/ 1, 1, 1, 0, 0, 0, 0,   0, 0,  0, 0 /)         ! 0: point, 1: cell
-  integer(4) :: PassiveVarList(11) =   (/ 0, 0, 0, 0, 0, 0, 0,   0, 0,  0, 0 /)
-  integer(4) :: ShareVarFromZone(11) = (/ 0, 0, 0, 0, 0, 0, 0,   0, 0,  0, 0 /)
+  ! переменные:                           x  y  z  u  v  w rho teta z0 rot id k
+  integer(4) :: ValueLocation(12) =    (/ 1, 1, 1, 0, 0, 0, 0,   0, 0,  0, 0, 0 /)         ! 0: point, 1: cell
+  integer(4) :: PassiveVarList(12) =   (/ 0, 0, 0, 0, 0, 0, 0,   0, 0,  0, 0, 0 /)
+  integer(4) :: ShareVarFromZone(12) = (/ 0, 0, 0, 0, 0, 0, 0,   0, 0,  0, 0, 0 /)
   ! integer(4) :: ValueLocation(4) = (/ 1, 1, 1, 0 /)         ! 0: point, 1: cell
   ! integer(4) :: PassiveVarList(4) = (/ 0, 0, 0, 0 /)
   ! integer(4) :: ShareVarFromZone(4) = (/ 0, 0, 0, 0 /)
@@ -156,7 +156,7 @@ subroutine TPoutPlt
   write(buf,"(a,i0,a)") "TITLE = ""TEST_NO: ", taskNum, """"
   rc = tecini142( &
           buf//c0, &                                                    ! заголовок
-          'x y z u v w rho teta z0 rot id'//c0, &                         ! переменные
+          'x y z u v w rho teta z0 rot id k'//c0, &                         ! переменные
           fname//c0, &                                                  ! имя файла
           './out'//c0, &                                                ! scratch dir
           0, &                                                          ! формат файла: 0=.plt 1=.szplt
@@ -389,7 +389,21 @@ subroutine TPoutPlt
       do ic = 1, ncx
         if(c_type(ic, jc)<=CELL_DELETED) cycle
         cnt = cnt + 1
-        data(cnt) = ic*1000 + jc + iz * 0.01d0
+        data(cnt) = ic*1000 + jc
+      end do
+    end do
+  end do
+  call assert(cnt==nnCells, "")
+  rc = tecdat142(cnt, data, 0)
+
+  ! k:
+  cnt = 0
+  do iz = 1, ncz
+    do jc = 1, ncy
+      do ic = 1, ncx
+        if(c_type(ic, jc)<=CELL_DELETED) cycle
+        cnt = cnt + 1
+        data(cnt) = iz
       end do
     end do
   end do

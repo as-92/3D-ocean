@@ -15,7 +15,7 @@ subroutine fx_BndSlide
     j = fx_sides(BC_SLIDE).ptr(is).j
 
     ! с какой стороны от стенки расчетная область?
-    if(fx_IsOwnRight(i, j)) then                                ! живая ячейка справа  |<-Q
+    if(fx_IsOwnRight(i, j)) then                                ! живая ячейка справа  | O
 
       ic = i                                                    ! индекс i ячейки
       do k=1, ncz
@@ -30,16 +30,16 @@ subroutine fx_BndSlide
         endif
 
         ! инвариант Q:
-        call TransportInvX(T_INVQ, i, j, k, DIRM, invQ)         ! перенос через правую ячейку влево
+        call TransportInvX(T_INVQ, i, j, k, DIRM, invQ)         ! перенос через правую ячейку влево   |<-O-
         Gq = -cs_G(ic,j,k)
 
         ! транспортные инварианты:
         if(M<-eps) then
-          call TransportInvX(T_INVU, i, j, k, DIRM, invU)       ! перенос через правую ячейку влево
+          call TransportInvX(T_INVU, i, j, k, DIRM, invU)       ! перенос через правую ячейку влево   |<O
           call TransportInvX(T_INVW, i, j, k, DIRM, invW)
           call TransportInvX(T_INVD, i, j, k, DIRM, invD)
         else
-          invU = cs_dv(ic,j,k)                                  ! инвариант в центре ячейки
+          invU = cs_dv(ic,j,k)                                  ! инвариант в центре ячейки           |>O
           invW = cs_dw(ic,j,k)
           invD = cs_drho(ic,j,k)
         end if
@@ -79,7 +79,7 @@ subroutine fx_BndSlide
 
       end do   ! k
 
-    else                                                        ! живая ячейка слева, стенка справа: R->|
+    else                                                        ! живая ячейка слева, стенка справа:    O |
 
       ic = i - 1                                                ! индекс i ячейки
       do k = 1, ncz
@@ -94,15 +94,15 @@ subroutine fx_BndSlide
         endif
 
         ! инвариант R:
-        call TransportInvX(T_INVR, i, j, k, DIRP, invR)          ! перенос через левую ячейку вправо
+        call TransportInvX(T_INVR, i, j, k, DIRP, invR)          ! перенос через левую ячейку вправо   -O->|
         Gr = cs_G(ic,j,k)
 
         ! транспортные инварианты:
-        if(M>eps) then                                            ! течение на стенку   >O|
+        if(M>eps) then                                            ! течение на стенку   O>|
           call TransportInvX(T_INVU, i, j, k, DIRP, invU)        ! .. перенос вправо
           call TransportInvX(T_INVW, i, j, k, DIRP, invW)
           call TransportInvX(T_INVD, i, j, k, DIRP, invD)
-        else                                                      ! течение от стенки   <O|
+        else                                                      ! течение от стенки   O<|
           invU = cs_dv(ic,j,k)
           invW = cs_dw(ic,j,k)
           invD = cs_drho(ic,j,k)
@@ -161,10 +161,10 @@ subroutine fy_BndSlide
   real(R8) :: invD, invQ, invR, invU, invW
   real(R8) :: uf, ul, ur
 
-  ns = nfx_sides(BC_SLIDE)                                      ! количество граней
+  ns = nfy_sides(BC_SLIDE)                                      ! количество граней
   do is=1, ns
-    i = fx_sides(BC_SLIDE).ptr(is).i                            ! индексы грани на сетке
-    j = fx_sides(BC_SLIDE).ptr(is).j
+    i = fy_sides(BC_SLIDE).ptr(is).i                            ! индексы грани на сетке
+    j = fy_sides(BC_SLIDE).ptr(is).j
 
     ! с какой стороны от стенки расчетная область?
     if(fy_IsOwnRight(i, j)) then                                ! живая ячейка справа  |<-Q
@@ -173,7 +173,7 @@ subroutine fy_BndSlide
       do k=1, ncz
 
         ! вычисляем Мах на грани:
-        uf = cs_u(i, jc, k)
+        uf = cs_v(i, jc, k)
         M = uf / cs_sound                                       ! Мах на грани
 
         if(abs(M)>0.9) then
@@ -191,14 +191,14 @@ subroutine fy_BndSlide
           call TransportInvY(T_INVW, i, j, k, DIRM, invW)
           call TransportInvY(T_INVD, i, j, k, DIRM, invD)
         else
-          invU = cs_dv(i,jc,k)                                  ! инвариант в центре ячейки
+          invU = cs_du(i,jc,k)                                  ! инвариант в центре ячейки
           invW = cs_dw(i,jc,k)
           invD = cs_drho(i,jc,k)
         end if
 
         ! восстанавливаем значения из инвариантов:
         drhoi = invD                                            ! дельта плотности
-        dvi = invU                                              ! дельта тангенцальной скорости
+        dui = invU                                              ! дельта тангенцальной скорости
         dwi = invW                                              ! дельта вертикальной скорости
 
         ! du = 0
@@ -208,7 +208,7 @@ subroutine fy_BndSlide
         ! dteta = invQ / Gq
 
         dtetai = invQ / Gq                                      ! дельта псевдоплотности
-        dui = 0.                                                ! дельта нормальной скорости
+        dvi = 0.                                                ! дельта нормальной скорости
 
         fyn_dteta(i,j,k) = dtetai
         fyn_du(i,j,k) = dui
@@ -237,7 +237,7 @@ subroutine fy_BndSlide
       do k = 1, ncz
 
         ! вычисляем число Маха на грани:
-        uf = cs_u0(i,jc)                                          ! скорость на грани
+        uf = cs_v(i,jc,k)                                         ! скорость на грани
         M = uf / cs_sound                                         ! Мах на грани
 
         if(abs(M)>0.9) then
@@ -255,14 +255,14 @@ subroutine fy_BndSlide
           call TransportInvY(T_INVW, i, j, k, DIRP, invW)
           call TransportInvY(T_INVD, i, j, k, DIRP, invD)
         else                                                      ! течение от стенки   <O|
-          invU = cs_dv(i,jc,k)
+          invU = cs_du(i,jc,k)
           invW = cs_dw(i,jc,k)
           invD = cs_drho(i,jc,k)
         end if
 
         ! восстанавливаем значения из инвариантов:
         drhoi = invD                                        ! дельта плотности
-        dvi = invU                                          ! дельта тангенцальной скорости
+        dui = invU                                          ! дельта тангенцальной скорости
         dwi = invW                                          ! дельта вертикальной скорости
 
         ! du = 0
@@ -272,7 +272,7 @@ subroutine fy_BndSlide
         ! dteta = invR / Gr
 
         dtetai = invR / Gr
-        dui = 0.
+        dvi = 0.
 
         fyn_dteta(i,j,k) = dtetai
         fyn_du(i,j,k) = dui

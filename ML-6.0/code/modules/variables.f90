@@ -572,7 +572,7 @@ contains !----------------------------------------------------------------------
   function fx_IsOwnRight(i, j)
     integer(4):: i, j
     logical:: fx_IsOwnRight
-    if(i==ncx) then                                             ! если грань на левом краю области
+    if(i==nxx) then                                             ! если грань на левом краю области
       fx_IsOwnRight = .false.                                   ! .. справа ячейки быть не может
     else
       fx_IsOwnRight = c_type(i, j) > CELL_DELETED
@@ -585,7 +585,7 @@ contains !----------------------------------------------------------------------
   function fy_IsOwnRight(i, j)
     integer(4):: i, j
     logical:: fy_IsOwnRight
-    if(j==ncy) then                                             ! если грань на левом краю области
+    if(j==nyy) then                                             ! если грань на левом краю области
       fy_IsOwnRight = .false.                                   ! .. справа ячейки быть не может
     else
       fy_IsOwnRight = c_type(i, j) > CELL_DELETED
@@ -608,8 +608,9 @@ contains !----------------------------------------------------------------------
     integer(4):: i, j, k
     real(R8):: z, c_GetW0, a
     z = (fz_z(i,j,k) + fz_z(i,j,k+1)) / 2.
-    a = (z - c_b(i,j)) / c_h0(i,j)
-    c_GetW0 = c_wt0(i,j) * a + c_wb0(i,j) * (1. - a)
+    !a = (z - c_b(i,j)) / c_h0(i,j)
+    !c_GetW0 = c_wt0(i,j) * a + c_wb0(i,j) * (1. - a)
+    c_GetW0 = (c_wt0(i,j) * (z - c_b(i,j)) + c_wb0(i,j) * (c_h0(i,j) + c_b(i,j) - z))  / c_h0(i,j)
   end function
 
   !----------------------------------------------------------------------------------------------------------------------------
@@ -622,7 +623,9 @@ contains !----------------------------------------------------------------------
     a = (z - c_b(i,j)) / cs_h0(i,j)
     wt = cs_wt0(i,j)
     wb = cs_wb0(i,j)
-    cs_GetW0 = wt * a + wb * (1. - a)
+    !cs_GetW0 = wt * a + wb * (1. - a)
+    cs_GetW0 = (cs_wt0(i,j) * (z - c_b(i,j)) + cs_wb0(i,j) * (cs_h0(i,j) + c_b(i,j) - z))  / cs_h0(i,j)
+    debdum = 0
   end function
 
   !----------------------------------------------------------------------------------------------------------------------------
@@ -633,7 +636,8 @@ contains !----------------------------------------------------------------------
     real(R8):: z, cn_GetW0, a
     z = (fzn_z(i,j,k) + fzn_z(i,j,k+1)) / 2.      ! середина слоя t[n+1]
     a = (z - c_b(i,j)) / cn_h0(i,j)
-    cn_GetW0 = cn_wt0(i,j) * a + cn_wb0(i,j) * (1. - a)
+    !cn_GetW0 = cn_wt0(i,j) * a + cn_wb0(i,j) * (1. - a)
+    cn_GetW0 = (cn_wt0(i,j) * (z - c_b(i,j)) + cn_wb0(i,j) * (cn_h0(i,j) + c_b(i,j) - z))  / cn_h0(i,j)
   end function
 
   !----------------------------------------------------------------------------------------------------------------------------
@@ -644,7 +648,8 @@ contains !----------------------------------------------------------------------
     real(R8):: z, fx_GetW0, a
     z = (fx_z(i,j,k) + fx_z(i,j,k+1)) / 2.
     a = (z - fx_b(i,j)) / fx_h0(i,j)
-    fx_GetW0 = fx_wt0(i,j) * a + fx_wb0(i,j) * (1. - a)
+    !fx_GetW0 = fx_wt0(i,j) * a + fx_wb0(i,j) * (1. - a)
+    fx_GetW0 = (fx_wt0(i,j) * (z - fx_b(i,j)) + fx_wb0(i,j) * (fx_h0(i,j) + fx_b(i,j) - z))  / fx_h0(i,j)
   end function
 
   !----------------------------------------------------------------------------------------------------------------------------
@@ -655,7 +660,8 @@ contains !----------------------------------------------------------------------
     real(R8):: z, fxn_GetW0, a
     z = (fxn_z(i,j,k) + fxn_z(i,j,k+1)) / 2.
     a = (z - fx_b(i,j)) / fxn_h0(i,j)
-    fxn_GetW0 = fxn_wt0(i,j) * a + fxn_wb0(i,j) * (1. - a)
+    !fxn_GetW0 = fxn_wt0(i,j) * a + fxn_wb0(i,j) * (1. - a)
+    fxn_GetW0 = (fxn_wt0(i,j) * (z - fx_b(i,j)) + fxn_wb0(i,j) * (fxn_h0(i,j) + fx_b(i,j) - z))  / fxn_h0(i,j)
   end function
 
   !----------------------------------------------------------------------------------------------------------------------------
@@ -687,8 +693,9 @@ contains !----------------------------------------------------------------------
     integer(4):: i, j, k
     real(R8):: z, fz_GetW0, a
     z = fz_z(i,j,k)
-    a = (z - c_b(i,j)) / c_h0(i,j)
-    fz_GetW0 = c_wt0(i,j) * a + c_wb0(i,j) * (1. - a)
+    !a = (z - c_b(i,j)) / c_h0(i,j)
+    !fz_GetW0 = c_wt0(i,j) * a + c_wb0(i,j) * (1. - a)
+    fz_GetW0 = (c_wt0(i,j) * (z - c_b(i,j)) + c_wb0(i,j) * (c_h0(i,j) + c_b(i,j) - z))  / c_h0(i,j)
     debdum=0
   end function
 
@@ -700,7 +707,8 @@ contains !----------------------------------------------------------------------
     real(R8):: z, fzn_GetW0, a
     z = fzn_z(i,j,k)
     a = (z - c_b(i,j)) / cn_h0(i,j)
-    fzn_GetW0 = cn_wt0(i,j) * a + cn_wb0(i,j) * (1. - a)
+    !fzn_GetW0 = cn_wt0(i,j) * a + cn_wb0(i,j) * (1. - a)
+    fzn_GetW0 = (cn_wt0(i,j) * (z - c_b(i,j)) + cn_wb0(i,j) * (cn_h0(i,j) + c_b(i,j) - z))  / cn_h0(i,j)
     debdum=0
   end function
 

@@ -11,7 +11,7 @@ subroutine TransportInvX(itype, i, j, k, off, inv)
   end interface
 
   integer(4):: itype, i, j, k, off
-  real(R8):: inv
+  real(R8):: inv, pani
   integer(4):: io, ic
   real(R8):: invo, invt, invc, invs, invn, sound, uc, lam, dx, q, Imin, Imax
   character(1):: iname(5)
@@ -19,29 +19,33 @@ subroutine TransportInvX(itype, i, j, k, off, inv)
   io = i - (2*off-1)                                            ! индекс заднего ребра
   ic = i - off                                                  ! индекс ячейки
 
-  invo = GetSideInvX(itype, io, j, k, cs_G(ic, j, k))                             ! инвариант на задней грани
-  invt = GetSideInvX(itype, i, j, k, cs_G(ic, j, k))                              ! инвариант на передней грани
-  invc = GetCellInvX(itype, ic, j, k, .false.)                    ! инвариант в ячейке t[n]
-  invs = GetCellInvX(itype, ic, j, k, .true.)                     ! инвариант в ячейке t[n+1/2]
+  invo = GetSideInvX(itype, io, j, k, cs_G(ic, j, k))           ! инвариант на задней грани
+  invt = GetSideInvX(itype, i, j, k, cs_G(ic, j, k))            ! инвариант на передней грани
+  invc = GetCellInvX(itype, ic, j, k, .false.)                  ! инвариант в ячейке t[n]
+  invs = GetCellInvX(itype, ic, j, k, .true.)                   ! инвариант в ячейке t[n+1/2]
 
-  invn = 2.*invs - invo                                         ! новый инвариант предвариательно
+  pani = pan
+  if(abs(cs_u(ic,j,k))/cs_sound>0.5) pani = 1.
+  if(abs(fx_u(i,j,k))/cs_sound>0.5) pani = 1.
 
-  uc = cs_u0(ic,j) + cs_du(ic, j, k)                            ! скорость в ячейке
+  invn = (2.*invs - (1.-pani) * invo) / (1.+pani)               ! новый инвариант предвариательно
+
+  uc = cs_u(ic, j, k)                                           ! скорость в ячейке
   sound = cs_sound                                              ! скорость звука в ячейке
 
   ! вычисляем характеристическую скорость lambda:
   select case(itype)
     case (T_INVR)
-      lam = uc + sound                                 ! для инварианта R: lam = u + c
+      lam = uc + sound                                          ! для инварианта R: lam = u + c
     case (T_INVQ)
-      lam = uc - sound                                 ! для инварианта Q: lam = u - c
+      lam = uc - sound                                          ! для инварианта Q: lam = u - c
     case default
-      lam = uc                                         ! для транспортных инвариантов: lam = u
+      lam = uc                                                  ! для транспортных инвариантов: lam = u
   end select
   if(off==0) lam = -lam                                         ! если перенос влево
   dx = c_dx(ic)
 
-  q = 2. * (invs - invc) + lam * (invt - invo) / dx * dt              ! аппроксимация правой части
+  q = 2. * (invs - invc) + lam * (invt - invo) / dx * dt        ! аппроксимация правой части
   Imin = min(invo, invc, invt) + q                              ! нижня мажоранта
   Imax = max(invo, invc, invt) + q                              ! верхняя мажоранта
 
@@ -81,35 +85,39 @@ subroutine TransportInvY(itype, i, j, k, off, inv)
   integer(4):: itype, i, j, k, off
   real(R8):: inv
   integer(4):: jo, jc
-  real(R8):: invo, invt, invc, invs, invn, sound, uc, lam, dy, q, Imin, Imax
+  real(R8):: invo, invt, invc, invs, invn, sound, uc, lam, dy, q, Imin, Imax, pani
   character(1):: iname(5)
 
   jo = j - (2*off-1)                                            ! индекс заднего ребра
   jc = j - off                                                  ! индекс ячейки
 
-  invo = GetSideInvY(itype, i, jo, k, cs_G(i, jc, k))                             ! инвариант на задней грани
-  invt = GetSideInvY(itype, i, j , k, cs_G(i, jc, k))                              ! инвариант на передней грани
-  invc = GetCellInvY(itype, i, jc, k, .false.)                    ! инвариант в ячейке t[n]
-  invs = GetCellInvY(itype, i, jc, k, .true.)                     ! инвариант в ячейке t[n+1/2]
+  invo = GetSideInvY(itype, i, jo, k, cs_G(i, jc, k))           ! инвариант на задней грани
+  invt = GetSideInvY(itype, i, j , k, cs_G(i, jc, k))           ! инвариант на передней грани
+  invc = GetCellInvY(itype, i, jc, k, .false.)                  ! инвариант в ячейке t[n]
+  invs = GetCellInvY(itype, i, jc, k, .true.)                   ! инвариант в ячейке t[n+1/2]
 
-  invn = 2.*invs - invo                                         ! новый инвариант предвариательно
+  pani = pan
+  if(abs(cs_v(i,jc,k))/cs_sound>0.5) pani = 1.
+  if(fy_v(i,j,k)/cs_sound>0.5) pani = 1.
 
-  uc = cs_v0(i,jc) + cs_dv(i, jc, k)                            ! скорость в ячейке
-  sound = cs_sound                                 ! скорость звука в ячейке
+  invn = (2.*invs - (1.-pani) * invo) / (1.+pani)               ! новый инвариант предвариательно
+
+  uc = cs_v(i, jc, k)                                           ! скорость в ячейке
+  sound = cs_sound                                              ! скорость звука в ячейке
 
   ! вычисляем характеристическую скорость lambda:
   select case(itype)
     case (T_INVR)
-      lam = uc + sound                                 ! для инварианта R: lam = u + c
+      lam = uc + sound                                          ! для инварианта R: lam = u + c
     case (T_INVQ)
-      lam = uc - sound                                 ! для инварианта Q: lam = u - c
+      lam = uc - sound                                          ! для инварианта Q: lam = u - c
     case default
-      lam = uc                                         ! для транспортных инвариантов: lam = u
+      lam = uc                                                  ! для транспортных инвариантов: lam = u
   end select
   if(off==0) lam = -lam                                         ! если перенос влево
   dy = c_dy(jc)
 
-  q = 2. * (invs - invc) + lam * (invt - invo) / dy * dt              ! аппроксимация правой части
+  q = 2. * (invs - invc) + lam * (invt - invo) / dy * dt        ! аппроксимация правой части
   Imin = min(invo, invc, invt) + q                              ! нижня мажоранта
   Imax = max(invo, invc, invt) + q                              ! верхняя мажоранта
 
@@ -149,7 +157,7 @@ subroutine TransportInvZ(itype, i, j, k, off, inv)
   integer(4):: itype, i, j, k, off
   real(R8):: inv
   integer(4):: ko, kc
-  real(R8):: invo, invt, invc, invs, invn, sound, wi, wc, czp, lam, dz, q, Imin, Imax
+  real(R8):: invo, invt, invc, invs, invn, sound, wi, wc, czp, lam, dz, q, Imin, Imax, pani
   character(1):: iname(5)
 
   ko = k - (2*off-1)                                            ! индекс заднего ребра
@@ -160,24 +168,28 @@ subroutine TransportInvZ(itype, i, j, k, off, inv)
   invc = GetCellInvZ(itype, i, j, kc, .false.)                  ! инвариант в ячейке t[n]
   invs = GetCellInvZ(itype, i, j, kc, .true.)                   ! инвариант в ячейке t[n+1/2]
 
-  invn = 2.*invs - invo                                         ! новый инвариант предвариательно
+  pani = pan
+  if(abs(cs_w(i,j,kc))/cs_sound>0.5) pani = 1.
+  if(abs(fz_w(i,j,k))/cs_sound>0.5) pani = 1.
 
-  wi = cs_GetW0(i,j,kc) + cs_dw(i,j,kc)                         ! эйлерова вертикальная скорость в слой-ячейке
-  wc = wi - (fz_zp(i, j, k) + fz_zp(i, j, k)) / 2.              ! характеристическая скорость в ячейке
+  invn = (2.*invs - (1.-pani) * invo) / (1.+pani)               ! новый инвариант предвариательно
+
+  wi = cs_w(i,j,kc)                                             ! эйлерова вертикальная скорость в слой-ячейке
+  wc = wi - fz_zp(i, j, k)                                      ! характеристическая скорость в ячейке
   sound = cs_sound                                              ! скорость звука в ячейке
 
   ! вычисляем характеристическую скорость lambda:
   select case(itype)
     case (T_INVR)
-      lam = wc + sound                                 ! для инварианта R: lam = u + c
+      lam = wc + sound                                          ! для инварианта R: lam = u + c
     case (T_INVQ)
-      lam = wc - sound                                 ! для инварианта Q: lam = u - c
+      lam = wc - sound                                          ! для инварианта Q: lam = u - c
     case default
-      lam = wc                                         ! для транспортных инвариантов: lam = u
+      lam = wc                                                  ! для транспортных инвариантов: lam = u
   end select
   dz = fz_z(i,j,k) - fz_z(i,j,ko)
 
-  q = 2. * (invs - invc) + lam * (invt - invo) / dz * dt              ! аппроксимация правой части
+  q = 2. * (invs - invc) + lam * (invt - invo) / dz * dt        ! аппроксимация правой части
   Imin = min(invo, invc, invt) + q                              ! нижня мажоранта
   Imax = max(invo, invc, invt) + q                              ! верхняя мажоранта
 
@@ -439,7 +451,7 @@ subroutine TransportHX(i, j, off, inv)
   integer(4):: i, j, off
   real(R8):: inv
   integer(4):: io, ic
-  real(R8):: invo, invt, invc, invs, invn, sound, uc, lam, dx, q, Imin, Imax
+  real(R8):: invo, invt, invc, invs, invn, sound, uc, lam, dx, q, Imin, Imax, pani
 
   io = i - (2*off-1)                                            ! индекс заднего ребра
   ic = i - off                                                  ! индекс ячейки
@@ -455,7 +467,11 @@ subroutine TransportHX(i, j, off, inv)
 #endif
   invs = fzs_z(ic,j,1) - cs_z0(ic,j)                            ! в ячейке t[n+1/2]
 
-  invn = 2.*invs - invo                                         ! новый инвариант предвариательно
+  pani = pan
+  if(abs(cs_u(ic,j,1))/cs_sound>0.5) pani = 1.
+  if(abs(fx_u(i,j,1))/cs_sound>0.5) pani = 1.
+
+  invn = (2.*invs - (1.-pani) * invo) / (1.+pani)               ! новый инвариант предвариательно
 
   uc = cs_u0(ic,j) + cs_du(ic, j, 1)                            ! скорость в ячейке
   lam = uc                                                      ! для транспортных инвариантов: lam = u
@@ -493,7 +509,7 @@ subroutine TransportHY(i, j, off, inv)
   integer(4):: i, j, off
   real(R8):: inv
   integer(4):: jo, jc
-  real(R8):: invo, invt, invc, invs, invn, sound, vc, lam, dy, q, Imin, Imax
+  real(R8):: invo, invt, invc, invs, invn, sound, vc, lam, dy, q, Imin, Imax, pani
 
   jo = j - (2*off-1)                                            ! индекс заднего ребра
   jc = j - off                                                  ! индекс ячейки
@@ -509,7 +525,11 @@ subroutine TransportHY(i, j, off, inv)
 #endif
   invs = fzs_z(i,jc,1) - cs_z0(i,jc)                            ! в ячейке t[n+1/2]
 
-  invn = 2.*invs - invo                                         ! новый инвариант предвариательно
+  pani = pan
+  if(abs(cs_v(i,jc,1))/cs_sound>0.5) pani = 1.
+  if(fy_v(i,j,1)/cs_sound>0.5) pani = 1.
+
+  invn = (2.*invs - (1.-pani) * invo) / (1.+pani)               ! новый инвариант предвариательно
 
   vc = cs_v0(i,jc) + cs_dv(i, jc,1)                            ! скорость в ячейке
   lam = vc                                                      ! для транспортных инвариантов: lam = u
