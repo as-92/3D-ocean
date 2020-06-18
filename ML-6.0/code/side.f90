@@ -119,7 +119,8 @@ subroutine Phase2X
   call fx_BndSlide                                              ! ГУ "стенка с проскальзыванием"
   call fx_BndStick                                              ! ГУ "стенка с прилипанием"
   call fx_BndInoutFix                                           ! ГУ "постоянный вток"
-  call fx_BndInoutVar                                           ! ГУ "переменный вток"
+  call fx_BndInoutVarT                                          ! ГУ "переменный по времени вток"
+  call fx_BndInoutVarZ                                          ! ГУ "переменный по Z вток"
   call fx_BndFixU                                               ! ГУ "фиксированная скорость"
 
 end subroutine Phase2X
@@ -241,7 +242,8 @@ subroutine Phase2Y
   call fy_BndSlide                                              ! ГУ "стенка с проскальзыванием"
   call fy_BndStick                                              ! ГУ "стенка с прилипанием"
   call fy_BndInoutFix                                           ! ГУ "постоянный вток"
-  call fy_BndInoutVar                                           ! ГУ "переменный вток"
+  call fy_BndInoutVarT                                          ! ГУ "переменный по времени вток"
+  !call fy_BndInoutVarZ                                          ! ГУ "переменный по Z вток"
   call fy_BndFixU                                               ! ГУ "фиксированная скорость"
 
 end
@@ -484,7 +486,7 @@ subroutine Phase2Z_top
   implicit none
 
   integer:: i, j, k, il, ir, jl, jr, nc, ic, ibc
-  real(R8):: z0, zp, Gr, QQ, uxl, uxr, vyl, vyr, uc, vc, uf, M, H0l, H0r, Hl, Hr, w0, dzdx, dzdy, dwdz
+  real(R8):: z0, zp, Gr, QQ, uxl, uxr, vyl, vyr, uc, vc, uf, M, H0l, H0r, Hl, Hr, w0, dzdx, dzdy, dwdz, bcU, h
   real(R8):: invR, invH
   logical:: isOwnRight
 
@@ -591,7 +593,7 @@ subroutine Phase2Z_top
 
           fxn_dH(i,j) = invH
 
-        case(BC_IN, BC_IN_T) !.. вход ...........................................................
+        case(BC_IN, BC_IN_T, BC_IN_Z) !.. вход ...........................................................
 
           il = i-1
           ir = i
@@ -599,12 +601,20 @@ subroutine Phase2Z_top
           ibc = fx_bc(i,j)
           isOwnRight = fx_IsOwnRight(i,j)
 
-          ! скорость на грани:
-          if(isOwnRight) then                                   ! ячейка справа
-            uf = (bcData(ibc).u + fzn_du(ir,j,1)+c_u0(ir,j)) / 2.
+          if(taskNum==4) then
+            bcU = task4_u0(x(i))
           else
-            uf = (fzn_du(il,j,1)+c_u0(il,j) + bcData(ibc).u) / 2.
+            bcU = bcData(ibc).u
+          endif
+
+          ! скорость на грани:
+          !uf = bcData(ibc).u
+          if(isOwnRight) then                                   ! ячейка справа
+            uf = (bcU + fzn_du(ir,j,1)+c_u0(ir,j)) / 2.
+          else
+            uf = (fzn_du(il,j,1)+c_u0(il,j) + bcU) / 2.
           end if
+
           M = uf / cs_sound                                     ! число Маха для переноса инвариантов
 
           if(abs(M)>0.9) then
@@ -619,6 +629,8 @@ subroutine Phase2Z_top
               invH = 0.
             else if(M<-eps) then                                ! течение справа налево (через ячейку)
               call TransportHX(i, j, DIRM, invH)                ! перенос через правую ячейку влево
+            else if(M>eps) then
+              invH = 0.                                         ! за границей h и h0 совпадают
             else
               H0r = c_b(ir,j) + cs_h0(ir,j)                     ! поверхность МВ в ячейке справа
               Hr = fzs_z(ir,j,1)                                ! реальная поверхность в ячейке справа
@@ -654,9 +666,11 @@ subroutine Phase2Z_top
       if(fx_type(i,j)<0) cycle                                  ! пропускаем не рабочие грани
       ! Выше на каждой рабочей грани вычислен уровень поверхности.
       ! Определяем z-координаты разделов между слоями
-      z0 = fxn_z0(i,j) + fxn_dH(i,j)        ! реальная поверхность
-      do k=1,nz-1
-        fxn_z(i,j,k) = z0 - (k - 1.) * ((z0 - fx_b(i, j)) / (nz - 1.))
+      z0 = fxn_z0(i,j) + fxn_dH(i,j)                            ! реальная поверхность
+      h = z0 - fx_b(i,j)                                        ! текущая глубина
+      fxn_z(i,j,1) = z0
+      do k=2,nz-1
+        fxn_z(i,j,k) = fxn_z(i,j,k-1) - h * cfh(k-1)
       end do
       fxn_z(i,j,nz) = fx_b(i,j)
 
@@ -849,8 +863,10 @@ subroutine Phase2Z_top
       ! Выше на каждой рабочей грани вычислен уровень поверхности.
       ! Определяем z-координаты разделов между слоями
       z0 = fyn_z0(i,j) + fyn_dH(i,j)                            ! реальная поверхность
-      do k=1,nz-1
-        fyn_z(i,j,k) = z0 - (k - 1.) * ((z0 - fy_b(i, j)) / (nz - 1.))
+      h = z0 - fy_b(i,j)                                        ! текущая глубина
+      fyn_z(i,j,1) = z0
+      do k=2,nz-1
+        fyn_z(i,j,k) = fyn_z(i,j,k-1) - h * cfh(k-1)
       end do
       fyn_z(i,j,nz) = fy_b(i,j)
 
@@ -929,8 +945,9 @@ subroutine Phase2Z_top
     fzn_dw(i,j,1) = invR - Gr * fzn_dteta(i,j,1)
 
     ! новая сетка по вертикали в ячейке (i,j):
+    h = fzn_z(i,j,1) - c_b(i,j)
     do k=2,nz-1
-      fzn_z(i,j,k) = fzn_z(i,j,1) - (k-1.) * (fzn_z(i,j,1) - fzn_z(i,j,nz)) / (nz - 1.)
+      fzn_z(i,j,k) = fzn_z(i,j,k-1) - h * cfh(k-1)
     end do
     fzn_z(i,j,nz) = c_b(i,j)
 

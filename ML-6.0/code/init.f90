@@ -70,7 +70,7 @@ subroutine Init
   nprint = 0
 
   select case (taskNum)
-    case (  4);  call avost; call SetupTask_4          ! проточный тест с аналитическим решением
+    case (  4);  call SetupTask_4          ! проточный тест с аналитическим решением
     case (  8);  call SetupTask_8          ! вихрь X-Y
     case (  9);  call SetupTask_9          ! вихревая пара X-Z
     case ( 10);  call SetupTask_10         ! горбы

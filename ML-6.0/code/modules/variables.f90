@@ -16,7 +16,8 @@ module variables
   integer(1), parameter:: BC_IN_T = 7                               ! вток, переменный по времени, индивидуальный для каждой грани
   integer(1), parameter:: BC_FIX_U = 8                              ! на входе задана скорость
   integer(1), parameter:: BC_H_VAR_T = 9
-  integer(1), parameter:: NBC = 9                                   ! максимальный номер ГУ для грани
+  integer(1), parameter:: BC_IN_Z = 10                              ! вток, переменный по Z, индивидуальный для каждой грани
+  integer(1), parameter:: NBC = 10                                  ! максимальный номер ГУ для грани
 
   integer(1), parameter:: CELL_DELETED_SPEC = -2                    ! уничтоженная специальная ячейка
   integer(1), parameter:: CELL_DELETED = -1                         ! уничтоженная ячейка
@@ -60,8 +61,6 @@ module variables
   integer:: nxx, nxy                  ! число X-граней по x и y (массивы fx_..)
   integer:: nyx, nyy                  ! число Y-граней по x и y (массивы fy_..)
   integer:: ncz                       ! число слоёв
-
-  real(R8),pointer::Tsurf(:,:)   ! Температура на поверхности
 
   real(R8):: CFD_T, CFD_L, CFD_H, CFD_TEMP, CFD_RHO      ! размерные коэффициенты
 
@@ -110,6 +109,7 @@ module variables
   real(R8), pointer :: ubcl0(:), ubcr0(:)
 
   real(R8),pointer:: x(:), y(:)                       ! координаты прямоугольной сетки
+  real(R8),pointer:: cfh(:)                         ! пропорции вертикальной сетки (сумма равна 1)
   real(R8),pointer:: c_b(:,:),fx_b(:,:),fy_b(:,:)     ! уровень дна
   integer(1),pointer:: c_map(:,:)                     ! карта
   !real(R8),pointer:: c_z(:,:,:),cs_z(:,:,:)   ! z-координата раздела между слоями
@@ -159,6 +159,8 @@ module variables
   real(R8), pointer:: fz_w0(:,:,:), fzn_w0(:,:,:)
 
   real(R8),pointer::f_tmp3(:,:,:)                                 ! "пустой" указатель - только для обмена 3D указателей
+
+  real(R8),pointer::Tsurf(:,:)   ! Температура на поверхности
 
   ! консервативные переменные в слой-ячейках (по z - в середине слоя):
   real(R8),pointer:: c_du(:,:,:), cs_du(:,:,:), c_u(:,:,:), cs_u(:,:,:)
@@ -312,7 +314,7 @@ contains !----------------------------------------------------------------------
 
     !----------------------------------------------------------------------------------------
 
-    allocate(c_b(ncx,ncy), c_type(ncx, ncy), c_tmp(ncx,ncy,ncz), c_dx(ncx), c_dy(ncy),          &
+    allocate(c_b(ncx,ncy), c_type(ncx, ncy), c_tmp(ncx,ncy,ncz), c_dx(ncx), c_dy(ncy), cfh(ncz), &
         c_dteta(ncx,ncy,ncz), cs_dteta(ncx,ncy,ncz), c_teta(ncx,ncy,ncz), cs_teta(ncx,ncy,ncz), &
         c_drho(ncx,ncy,ncz),  cs_drho(ncx,ncy,ncz),  c_rho(ncx,ncy,ncz),  cs_rho(ncx,ncy,ncz),  &
         c_du(ncx,ncy,ncz),    cs_du(ncx,ncy,ncz),    c_u(ncx,ncy,ncz),    cs_u(ncx,ncy,ncz),    &
@@ -395,6 +397,8 @@ contains !----------------------------------------------------------------------
     fy_type(:,2:ny-1) = BC_INNER
     fy_type(:,ny) = bcTypeY
     fy_bc = 0                             ! нет ГУ с данными на границе
+
+    cfh(:) = 1.d0 / ncz                                       ! по умолчанию: равномерная по вертикали сетка
 
     needCalc_BC_H_VAR_T = .false.
 
@@ -505,26 +509,23 @@ contains !----------------------------------------------------------------------
   !----------------------------------------------------------------------------------------------------
 
   ! Распределение температуры в тесте Залесного(test_numb == 1)
-  function getT(z) result(T)
+  real(R8) function getT(z) result(T)
     real(R8), intent(in) :: z ! input
-    real(R8)             :: T ! output
     T = (7.5 *(1. - tanh((z-80.)/30.)) + (5000.-z) / 5000. * 10.)
   end function getT
 
   !----------------------------------------------------------------------------------------------------
 
   ! Зависимость плотности от температуры:
-  function getRHO(T) result(RHO)
+  real(R8) function getRHO(T) result(RHO)
     real(R8), intent(in) :: T ! input
-    real(R8)             :: RHO ! output
     RHO = cfT_rho0 * ( 1. - cfT_alpha * T )
   end function getRHO
 
   !----------------------------------------------------------------------------------------------------
 
-  function getTfromRHO(RHO) result(T)
+  real(R8) function getTfromRHO(RHO) result(T)
     real(R8), intent(in) :: RHO ! input
-    real(R8)             :: T ! output
     T = (1. - RHO/cfT_rho0) / cfT_alpha
   end function getTfromRHO
 
@@ -544,61 +545,81 @@ contains !----------------------------------------------------------------------
   !----------------------------------------------------------------------------------------------------
 
   ! уровень дна в ячейке:
-  function task4_b(xi)
+  real(R8) function task4_b(xi) result(b)
     implicit none
-    real(R8) :: xi, task4_b
+    real(R8) :: xi
     real(R8) :: hi
 
     hi = task4_h(xi)
-    task4_b = b0 - hi  - (talpha*tbeta)**2 / (2. * g * (sin(tbeta*hi))**2)
+    b = b0 - hi  - (talpha*tbeta)**2 / (2. * g * (sin(tbeta*hi))**2)
   end function
 
   !----------------------------------------------------------------------------------------------------
 
   ! скорость (решение в тесте 4)
-  function task4_u(xi, zi)
+  real(R8) function task4_u(xi, zi) result(u)
     implicit none
-    real(R8) :: xi, zi, task4_u
+    real(R8) :: xi, zi
     real(R8) :: hi, bi
 
     hi = task4_h(xi)
     bi = task4_b(xi)
-    task4_u = talpha * tbeta  / sin(tbeta * hi) * cos(tbeta * (zi - bi))
+    u = talpha * tbeta  / sin(tbeta * hi) * cos(tbeta * (zi - bi))
+  end function
+
+  !----------------------------------------------------------------------------------------------------
+
+  ! интеграл скорости - для мелкой воды (решение в тесте 4)
+  real(R8) function task4_u0(xi) result(u0)
+    implicit none
+    real(R8) :: xi
+    real(R8) :: hi, bi, ui, zi, dz, z
+    integer:: k, n
+
+    hi = task4_h(xi)
+    bi = task4_b(xi)
+    zi = bi + hi
+
+    n = 200
+    dz = hi / n
+
+    ui = 0.
+    do k=1,n
+      z = zi - dz * (k-0.5)
+      ui = ui + task4_u(xi, zi)
+    end do
+    u0 = ui / n
   end function
 
   !----------------------------------------------------------------------------------------------------------------------------
 
   ! есть ли справа от грани рабочая ячейка
-  function fx_IsOwnRight(i, j)
+  logical function fx_IsOwnRight(i, j) result (isOwnRight)
     integer(4):: i, j
-    logical:: fx_IsOwnRight
     if(i==nxx) then                                             ! если грань на левом краю области
-      fx_IsOwnRight = .false.                                   ! .. справа ячейки быть не может
+      isOwnRight = .false.                                      ! .. справа ячейки быть не может
     else
-      fx_IsOwnRight = c_type(i, j) > CELL_DELETED
+      isOwnRight = c_type(i, j) > CELL_DELETED
     end if
   end function
 
   !----------------------------------------------------------------------------------------------------------------------------
 
   ! есть ли справа от грани рабочая ячейка
-  function fy_IsOwnRight(i, j)
+  logical function fy_IsOwnRight(i, j) result (isOwnRight)
     integer(4):: i, j
-    logical:: fy_IsOwnRight
     if(j==nyy) then                                             ! если грань на левом краю области
-      fy_IsOwnRight = .false.                                   ! .. справа ячейки быть не может
+      isOwnRight = .false.                                      ! .. справа ячейки быть не может
     else
-      fy_IsOwnRight = c_type(i, j) > CELL_DELETED
+      isOwnRight = c_type(i, j) > CELL_DELETED
     end if
   end function
 
   !----------------------------------------------------------------------------------------------------------------------------
 
-  function cs_GetG(i,j,k)
+  real(R8) function cs_GetG(i,j,k) result(G)
     integer(4):: i, j, k
-    real(R8):: cs_GetG
-
-    cs_GetG = cs_sound / (teta0 + cs_dteta(i,j,k))
+    G = cs_sound / (teta0 + cs_dteta(i,j,k))
   end
 
   !----------------------------------------------------------------------------------------------------------------------------

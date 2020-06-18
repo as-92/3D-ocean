@@ -158,11 +158,11 @@ subroutine PhaseSw2X
     subroutine BuildFluxesSwX(i, j); integer(4):: i, j; end subroutine
   end interface
 
-  integer(4):: i, j, il, ir, ic, is, ns, ibc
+  integer(4):: i, j, k, il, ir, ic, is, ns, ibc
   real(R8):: invR, invQ, invU, invD                             ! новые инварианты
   real(R8):: soundr, soundl, sound, uf, M, Gr, Gq
-  real(R8):: hi, ui, vi, rhoi
-  real(R8):: bcH, bcU, bcV, bcRho
+  real(R8):: hi, ui, vi, rhoi, xi, zi
+  real(R8):: bcH, bcU, bcV, bcRho, bcZ
   logical:: isOwnRight                                          ! признак "ячейка справа"
 
   ! внутренние грани:
@@ -542,6 +542,7 @@ subroutine PhaseSw2X
 
     ! заграничные данные:
     bcH = bcData(ibc).h
+    bcZ = fx_b(i,j) + bcH
     bcU = bcData(ibc).u
     bcV = bcData(ibc).v
     bcRho = bcData(ibc).rho
@@ -569,7 +570,7 @@ subroutine PhaseSw2X
     ! инвариант R (слева направо):
     if(isOwnRight) then                                         ! ячейка справа, граница слева
       Gr = sqrt(g / bcH)
-      invR = bcU + Gr * bcH
+      invR = bcU + Gr * (bcH + fx_b(i,j))
     else                                                        ! слева есть ячейка
       call TransportSwInvX(T_INVR, i, j, DIRP, invR)            ! .. перенос через левую ячейку вправо
       Gr = cs_G0(ic,j)
@@ -581,7 +582,7 @@ subroutine PhaseSw2X
       Gq = -cs_G0(ir,j)
     else
       Gq = -sqrt(g / bcH)
-      invQ = bcU + Gq * bcH
+      invQ = bcU + Gq * (bcH + fx_b(i,j))
     end if
 
     ! инварианты U и Rho:
@@ -635,7 +636,7 @@ subroutine PhaseSw2X
 
   !. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
 
-  ! ГУ "переменный вток":
+  ! ГУ "переменный по времени вток":
   ns = nfx_sides(BC_IN_T)                                       ! количество граней
   do is=1, ns
     i = fx_sides(BC_IN_T).ptr(is).i                             ! индексы грани на сетке
@@ -647,6 +648,7 @@ subroutine PhaseSw2X
 
     ! заграничные данные:
     bcH = bcData(ibc).h
+    bcZ = fx_b(i,j) + bcH
     bcU = bcData(ibc).u
     bcV = bcData(ibc).v
     bcRho = bcData(ibc).rho
@@ -674,7 +676,7 @@ subroutine PhaseSw2X
     ! инвариант R (слева направо):
     if(isOwnRight) then                                         ! ячейка справа, граница слева
       Gr = sqrt(g / bcH)
-      invR = bcU + Gr * bcH
+      invR = bcU + Gr * (bcH + fx_b(i,j))
     else                                                        ! слева есть ячейка
       call TransportSwInvX(T_INVR, i, j, DIRP, invR)            ! .. перенос через левую ячейку вправо
       Gr = cs_G0(ic,j)
@@ -686,11 +688,10 @@ subroutine PhaseSw2X
       Gq = -cs_G0(ir,j)
     else
       Gq = -sqrt(g / bcH)
-      invQ = bcU + Gq * bcH
+      invQ = bcU + Gq * (bcH + fx_b(i,j))
     end if
 
-    ! инварианты U и Rho:
-      ! транспортные инварианты:
+    ! транспортные инварианты:
     if(isOwnRight .and. M<-eps) then                            ! течение из ячейки на границу справа налево  |<O
       call TransportSwInvX(T_INVU, i, j, DIRM, invU)            ! .. перенос через правую ячейку влево
       call TransportSwInvX(T_INVD, i, j, DIRM, invD)            ! .. перенос через правую ячейку влево
@@ -713,6 +714,117 @@ subroutine PhaseSw2X
     ! invR*Gq - invQ*Gr = (Gq - Gr)*u
 
     hi = (invR - invQ) / (Gr - Gq) - fx_b(i,j)                  ! глубина
+    ui = (invR*Gq - invQ*Gr) / (Gq - Gr)                        ! нормальная скорость
+
+    fxn_h0(i,j) = hi
+    fxn_u0(i,j) = ui
+    fxn_v0(i,j) = vi                                            ! тангенцальная скорость
+    fxn_rho0(i,j) = rhoi                                        ! плотность
+
+    if(IsDebSideX(i, j, -1)) then
+      write(17,"(a)") ";i;j;;h;rho;u;v;R;Q;U;D;Gr;Gq"
+      write(17,"('side:',2(';',i0),';',100(';',1p,g0.16))") &
+          i, j, &
+            bcH, bcRho, bcU, bcV
+      write(17,"('UF:',2(';',i0),';',100(';',1p,g0.16))") &
+          i, j, &
+            fx_h0(i,j), fx_rho0(i,j), fx_u0(i,j), fx_v0(i,j), &
+            invR, invQ, invU, invD, Gr, Gq
+      write(17,"('UFN:',2(';',i0),';',100(';',1p,g0.16))") &
+          i, j, &
+            fxn_h0(i,j), fxn_rho0(i,j), fxn_u0(i,j), fxn_v0(i,j)
+    end if
+
+    call BuildFluxesSwX(i,j)                                    ! построение потоков на грани
+
+  end do  ! do is
+
+  !. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+  ! ГУ "переменный по Z вток":
+  ns = nfx_sides(BC_IN_Z)                                       ! количество граней
+  do is=1, ns
+    i = fx_sides(BC_IN_Z).ptr(is).i                             ! индексы грани на сетке
+    j = fx_sides(BC_IN_Z).ptr(is).j
+    il = i - 1
+    ir = i
+
+    xi = x(i)                                                   ! координата грани
+
+    ! заграничные данные:
+    if(taskNum==4) then
+      bcH = task4_h(xi)
+      bcZ = fx_b(i,j) + bcH
+      bcU = task4_u0(xi)
+      bcV = 0.
+      bcRho = rho0
+    else
+      call avost
+    end if
+
+    if(IsDebSideX(i, j, -1)) then
+      write(17,"(/'Phase Sw2-X',2(';',i0),';',';BC_IN_Z')") i, j
+    endif
+
+    isOwnRight = fx_IsOwnRight(i,j)
+
+    ic = i - 1; if(isOwnRight) ic = i
+
+    ! вычисляем Мах на грани:
+    soundr = sqrt(g * bcH)
+    soundl = sqrt(g * cs_h0(ic,j))
+    sound = (soundl + soundr) / 2.
+    uf = 0.5*(cs_u0(ic,j) + bcU)                                ! скорость на грани
+    M = uf / sound                                              ! Мах на грани
+
+    if(abs(M)>0.9) then
+      write(*,*) "ERROR in PhaseSw2X: |M|>1. side (i,j):", i, j
+      call avost
+    endif
+
+    ! инвариант R (слева направо):
+    if(isOwnRight) then                                         ! ячейка справа, граница слева
+      Gr = sqrt(g / bcH)
+      invR = bcU + Gr * bcZ
+    else                                                        ! слева есть ячейка
+      call TransportSwInvX(T_INVR, i, j, DIRP, invR)            ! .. перенос через левую ячейку вправо
+      Gr = cs_G0(ic,j)
+    end if
+
+    ! инвариант Q (справа налево):
+    if(isOwnRight) then                                         ! справа есть ячейка
+      call TransportSwInvX(T_INVQ, i, j, DIRM, invQ)            ! перенос через правую ячейку влево
+      Gq = -cs_G0(ir,j)
+    else
+      Gq = -sqrt(g / bcH)
+      invQ = bcU + Gq * bcZ
+    end if
+
+    ! инварианты U и Rho:
+      ! транспортные инварианты:
+    if(isOwnRight .and. M<-eps) then                            ! течение из ячейки на границу справа налево  |<O
+      call TransportSwInvX(T_INVU, i, j, DIRM, invU)            ! .. перенос через правую ячейку влево
+      call TransportSwInvX(T_INVD, i, j, DIRM, invD)            ! .. перенос через правую ячейку влево
+    else if(.not.isOwnRight .and. M>eps) then                   ! течение из ячейки на границу слева направо  O>|
+      call TransportSwInvX(T_INVU, i, j, DIRP, invU)            ! .. перенос через левую ячейку вправо
+      call TransportSwInvX(T_INVD, i, j, DIRP, invD)            ! .. перенос через левую ячейку вправо
+    else                                                        ! течение из-за границы
+      invU = bcV
+      invD = bcRho
+    end if
+
+    ! восстанавливаем значения из инвариантов:
+    rhoi = invD                                                 ! плотность
+    vi = invU                                                   ! тангенцальная скорость
+
+    ! invR = u + Gr * z
+    ! invQ = u + Gq * z
+    !----------------------------------
+    ! invR - invQ = (Gr - Gq)*z
+    ! invR*Gq - invQ*Gr = (Gq - Gr)*u
+
+    zi = (invR - invQ) / (Gr - Gq)                              ! уровень поверхности
+    hi = zi - fx_b(i,j)                                         ! глубина
     ui = (invR*Gq - invQ*Gr) / (Gq - Gr)                        ! нормальная скорость
 
     fxn_h0(i,j) = hi
@@ -1822,7 +1934,7 @@ subroutine CalcSwW
 #  endif
     dudx = ( (fx_u0(i+1,j)+fxn_u0(i+1,j))/2. - (fx_u0(i,j)+fxn_u0(i,j))/2. ) / dx
     dvdy = ( (fy_v0(i,j+1)+fyn_v0(i,j+1))/2. - (fy_v0(i,j)+fyn_v0(i,j))/2. ) / dy
-    !cs_wt0(i,j) = cs_wb0(i,j) - h * (dudx + dvdy)
+    cs_wt0(i,j) = cs_wb0(i,j) - h * (dudx + dvdy)
     !cs_wt0(i,j) = cs_wb0(i,j) - 0.125 * h4 * (fx_u0(i+1,j)+fxn_u0(i+1,j)-fx_u0(i,j)-fxn_u0(i,j)) / dx
     !cs_wt0(i,j) = cs_wt0(i,j) - 0.125 * h4 * (fy_v0(i,j+1)+fyn_v0(i,j+1)-fy_v0(i,j)-fyn_v0(i,j)) / dy
 #endif

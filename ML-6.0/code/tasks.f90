@@ -33,17 +33,17 @@ subroutine SetupTask_4
   dl=20.; dw=1.                                                 ! размер области
   nx=65; ny=2; nz=21                                             ! количество узлов сетки
 
-  bctypex = BC_IN; bctypey = BC_SLIDE
+  bcTypeX = BC_IN_Z; bcTypeY = BC_SLIDE
 
   call allocate
 
   ! отладка:
-  debstartstep = 0; debendstep = -5
+  debstartstep = 0; debendstep = 5
   debstartz = 1; debendz = 400
 
   !debcells(51, 1, 20) = 20
   !debcells(ncx, 1) = 1
-  !debSidesX(1, 1) = 1
+  debSidesX(1,1,:) = 1
   !debSidesX(nxx, 1) = 1
 
   !debCells(20, 12) = 1
@@ -53,7 +53,7 @@ subroutine SetupTask_4
 
   !debcells(31, 1) = 1
   !debSidesX(31, 1) = 1
-  !debSidesZ(31, 1) = 1
+  debSidesZ(1,1,:) = 1
 
 #if 1
   nt=20000                                                          ! полное число шагов по времени
@@ -68,13 +68,15 @@ subroutine SetupTask_4
   pan = 0.0                                                     !- параметр Паниковского
 
   ! константы:
-  g = 1
+  g = 9.8d0
   rho0 = 1.
   teta0 = 1.
   sound0 = 1.             ! псевдо-скорость звука:
+  talpha = 0.1
+  tbeta = 1.
 
   ! Расчет начальной сетки
-  x(1) = -dl / 2.
+  x(1) = 0.
   dx = dl / (nx-1)
   do i=1,ncx; x(i+1) = x(i) + dx; end do                        ! координаты узлов сетки
 
@@ -463,7 +465,7 @@ subroutine SetupTask_10
 
   CFL = 0.3                                                     ! Число Куранта
 
-  pan = 0.0                                                     !- параметр Паниковского
+  pan = 0.1                                                     !- параметр Паниковского
 
   g = 1
 
@@ -533,12 +535,37 @@ subroutine SetupTask_10
       bci = b0 + delbot                             ! уровень дна в ячейке
       tci = z0 + deltop                             ! уровень поверхности в ячейке
 
+#if 0
       ! равномерная сетка по вертикали от поверхности до дна:
+#else
+      ! НЕравномерная сетка по вертикали:
+      h_0 = 0.                                                   ! сумма для нормировки
+      do k=1,ncz
+        if(k==1) then
+          hi = 1.                                               ! шаг в слое
+        else
+          hi = hi * 1.1
+        end if
+        cfh(k) = hi
+        h_0 = h_0 + hi
+      end do
+
+      ! нормировка на общую толщину tci-bci:
+      do k=1, ncz
+        cfh(k) = cfh(k) / h_0
+      end do
+
       fz_z(ic, jc, 1) = tci
       fz_z(ic, jc, nz) = bci
-      do iz = 2, nz-1
+
+#endif
+
+      ! координаты разделов слоёв:
+      fz_z(ic, jc, 1) = tci
+      fz_z(ic, jc, nz) = bci
+      do k = 2, nz-1
         !fz_z(ic, jc, iz) = tci - (iz - 1.) * (tci - bci)/(nz - 1.)
-        fz_z(ic, jc, iz) = bci + (nz - iz) * (tci - bci)/(nz - 1.)
+        fz_z(ic, jc, k) = fz_z(ic, jc, k-1) - (tci - bci) * cfh(k-1)
       end do
     end do
   end do

@@ -1,35 +1,31 @@
-! ГУ "переменный вток" на X-гранях:
-subroutine fx_BndInoutVar
+! ГУ "переменный по Z вток" на X-гранях:
+subroutine fx_BndInoutVarZ
   use variables
   implicit none
 
   integer:: i, j, k, is, ic, ns, ibc
   real(R8):: bcH, bcU, bcV, bcW, bcRho, bcTeta
-  real(R8):: u1, u2, uf, M
+  real(R8):: u1, u2, uf, M, xi, zi
   real(R8):: invR, invQ, invU, invW, invD, Gr, Gq
   real(R8):: dui, dvi, dwi, drhoi, dtetai
   logical:: ownRight
 
   ns = nfx_sides(BC_IN_T)                                       ! количество граней
   do is=1, ns
+
+    if(taskNum/=4) call avost
+
     i = fx_sides(BC_IN_T).ptr(is).i                             ! индексы грани на сетке
     j = fx_sides(BC_IN_T).ptr(is).j
 
-    ibc = fx_bc(i,j)                                            ! индекс индивидуальных параметров ГУ
-
 #if DLEV>0
     if(IsDebSideX(i, j, -1)) then
-      write(17,"(/'Phase 2-X',2(';',i0),';;BC_IN_T',i0)") i, j, ibc
+      write(17,"(/'Phase 2-X',2(';',i0))") i, j
     endif
 #endif
 
     ! заграничные данные:
-    bcH = bcData(ibc).h
-    bcU = bcData(ibc).u
-    bcV = bcData(ibc).v
-    bcW = bcData(ibc).w
-    bcRho = bcData(ibc).rho
-    bcTeta = bcData(ibc).teta
+    xi = x(i)
 
     ownRight = fx_IsOwnRight(i,j)                                  ! лежит ли ячейка справа
 
@@ -39,6 +35,14 @@ subroutine fx_BndInoutVar
 
     do k=1, ncz
 
+      zi = (fz_z(i,j,k) + fz_z(i,j,k+1)) / 2.
+      bcH = task4_h(xi) / ncz
+      bcU = task4_u(xi, zi)
+      bcV = 0.
+      bcW = 0.
+      bcRho = rho0
+      bcTeta = teta0
+
       ! скорость на грани:
       u1 = cs_u(ic,j,k)                                         ! скорость в ячейке
       u2 = bcU                                                  ! скорость извне
@@ -46,7 +50,7 @@ subroutine fx_BndInoutVar
       M = uf / cs_sound                                         ! число Маха для переноса инвариантов
 
       if(abs(M)>0.9) then
-        write(*,*) "ERROR in Phase2Y: |M|>1. side (i,j,k):", i, j, k
+        write(*,*) "ERROR in Phase2X: |M|>1. side (i,j,k):", i, j, k
         call avost
       endif
 
@@ -119,12 +123,12 @@ subroutine fx_BndInoutVar
 
   end do  ! do is
 
-end subroutine fx_BndInoutVar
+end subroutine fx_BndInoutVarZ
 
 !===================================================================================================================
 
-! ГУ "переменный вток" на Y-гранях:
-subroutine fy_BndInoutVar
+! ГУ "переменный по Z вток" на Y-гранях:
+subroutine fy_BndInoutVarZ
   use variables
   implicit none
 
@@ -134,6 +138,8 @@ subroutine fy_BndInoutVar
   real(R8):: invR, invQ, invU, invW, invD, Gr, Gq
   real(R8):: dui, dvi, dwi, drhoi, dtetai
   logical:: ownRight
+
+  call avost
 
   ns = nfy_sides(BC_IN_T)                                         ! количество граней
   do is=1, ns
@@ -244,5 +250,5 @@ subroutine fy_BndInoutVar
 
   end do  ! do is
 
-end subroutine fy_BndInoutVar
+end subroutine fy_BndInoutVarZ
 

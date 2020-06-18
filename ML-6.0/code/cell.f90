@@ -241,7 +241,7 @@ subroutine Phase1
                    ( q_xb * dz_xb - q_xt * dz_xt) / dx + &
                    ( q_yr * dz_yr - q_yl * dz_yl) / dy + &
                    ( q_yb * dz_yb - q_yt * dz_yt) / dy + &
-                   ( (q_t * dwz(k) + dp_t / rho0) - (q_b * dwz(k+1) + dp_b * rho0) ) + &
+                   ( (q_t * dwz(k) + dp_t / rho0) - (q_b * dwz(k+1) + dp_b / rho0) ) + &
 !                   ( (q_t * dwz(k)              ) - (q_b * dwz(k+1)              ) ) + &
                    g * (rho_c - rho0) / rho0 * dz_c &
                                     ) * dt / 2.
